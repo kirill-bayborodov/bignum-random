@@ -8,6 +8,9 @@
  * sampling uses only invariant checks and does not assume a particular stream.
  */
 #include "bignum_random.h"
+#ifdef BIGNUM_RANDOM_CTR_DRBG_VECTOR_TEST
+#include "bignum_ctr_drbg.h"
+#endif
 
 #include <errno.h>
 #include <stdint.h>
@@ -212,7 +215,11 @@ static int test_fork_child_sampling(void)
  * violated API invariant without relying on a non-reproducible sampled value.
  * @return ISO C process success only when all listed scenarios pass.
  */
-int main(void)
+#ifdef BIGNUM_RANDOM_CTR_DRBG_VECTOR_TEST
+static int test_ctr_drbg_vectors(const char *library_path, const char *vector_path);
+#endif
+
+int main(int argc, char **argv)
 {
     int failed = 0;
 
@@ -225,6 +232,193 @@ int main(void)
     else { printf("test_representative_ranges: FAILED\n"); ++failed; }
     if (test_fork_child_sampling()) printf("test_fork_child_sampling: PASSED\n");
     else { printf("test_fork_child_sampling: FAILED\n"); ++failed; }
+#ifdef BIGNUM_RANDOM_CTR_DRBG_VECTOR_TEST
+    if (argc != 3 || !test_ctr_drbg_vectors(argv[1], argv[2])) {
+        printf("test_ctr_drbg_vectors: FAILED\n");
+        ++failed;
+    } else {
+        printf("test_ctr_drbg_vectors: PASSED\n");
+    }
+#else
+    (void)argc;
+    (void)argv;
+#endif
     printf("--- Deterministic bignum_random tests: %s ---\n", failed == 0 ? "PASSED" : "FAILED");
     return failed == 0 ? 0 : 1;
 }
+
+#ifdef BIGNUM_RANDOM_CTR_DRBG_VECTOR_TEST
+#define VECTOR_TEXT_CAP 4096U
+
+typedef struct vector_record {
+    char section[64];
+    char entropy[VECTOR_TEXT_CAP];
+    char nonce[VECTOR_TEXT_CAP];
+    char personalization[VECTOR_TEXT_CAP];
+    char additional[2][VECTOR_TEXT_CAP];
+    size_t additional_count;
+    char reseed_entropy[VECTOR_TEXT_CAP];
+    char reseed_additional[VECTOR_TEXT_CAP];
+    char pr_entropy[2][VECTOR_TEXT_CAP];
+    size_t pr_entropy_count;
+    char returned_bits[VECTOR_TEXT_CAP];
+    unsigned long count;
+} vector_record_t;
+
+static void vector_trim(char *text)
+{
+    size_t length = strlen(text);
+    size_t start = 0U;
+    while (start < length && (text[start] == ' ' || text[start] == '\t' || text[start] == '\r' || text[start] == '\n')) ++start;
+    while (length > start && (text[length - 1U] == ' ' || text[length - 1U] == '\t' || text[length - 1U] == '\r' || text[length - 1U] == '\n')) --length;
+    if (start != 0U) memmove(text, text + start, length - start);
+    text[length - start] = '\0';
+}
+
+static int vector_copy(char *destination, size_t capacity, const char *source)
+{
+    const size_t length = strlen(source);
+    if (length >= capacity) return 0;
+    memcpy(destination, source, length + 1U);
+    return 1;
+}
+
+static int vector_hex(const char *text, uint8_t *output, size_t capacity, size_t *length)
+{
+    size_t chars = strlen(text);
+    size_t index;
+    if ((chars & 1U) != 0U || chars / 2U > capacity) return 0;
+    for (index = 0U; index < chars / 2U; ++index) {
+        unsigned int high, low;
+        if (sscanf(text + index * 2U, "%1x%1x", &high, &low) != 2) return 0;
+        output[index] = (uint8_t)((high << 4U) | low);
+    }
+    *length = chars / 2U;
+    return 1;
+}
+
+static void vector_reset(vector_record_t *record, const char *section)
+{
+    memset(record, 0, sizeof(*record));
+    (void)vector_copy(record->section, sizeof(record->section), section);
+}
+
+static int vector_field(vector_record_t *record, const char *key, const char *value)
+{
+    if (strcmp(key, "COUNT") == 0) return sscanf(value, "%lu", &record->count) == 1;
+    if (strcmp(key, "EntropyInput") == 0) return vector_copy(record->entropy, sizeof(record->entropy), value);
+    if (strcmp(key, "Nonce") == 0) return vector_copy(record->nonce, sizeof(record->nonce), value);
+    if (strcmp(key, "PersonalizationString") == 0) return vector_copy(record->personalization, sizeof(record->personalization), value);
+    if (strcmp(key, "EntropyInputReseed") == 0) return vector_copy(record->reseed_entropy, sizeof(record->reseed_entropy), value);
+    if (strcmp(key, "AdditionalInputReseed") == 0) return vector_copy(record->reseed_additional, sizeof(record->reseed_additional), value);
+    if (strcmp(key, "ReturnedBits") == 0) return vector_copy(record->returned_bits, sizeof(record->returned_bits), value);
+    if (strcmp(key, "AdditionalInput") == 0) {
+        if (record->additional_count >= 2U) return 0;
+        if (!vector_copy(record->additional[record->additional_count], sizeof(record->additional[0]), value)) return 0;
+        ++record->additional_count;
+        return 1;
+    }
+    if (strcmp(key, "EntropyInputPR") == 0) {
+        if (record->pr_entropy_count >= 2U) return 0;
+        if (!vector_copy(record->pr_entropy[record->pr_entropy_count], sizeof(record->pr_entropy[0]), value)) return 0;
+        ++record->pr_entropy_count;
+    }
+    return 1;
+}
+
+static int vector_run_record(const vector_record_t *record)
+{
+    uint8_t entropy[1024], nonce[1024], personalization[1024], extra[1024], expected[1024], output[1024];
+    size_t entropy_len = 0U, nonce_len = 0U, personalization_len = 0U, extra_len = 0U, expected_len = 0U, index;
+    bignum_ctr_drbg_ctx context;
+    if (!vector_hex(record->entropy, entropy, sizeof(entropy), &entropy_len) ||
+        !vector_hex(record->nonce, nonce, sizeof(nonce), &nonce_len) ||
+        !vector_hex(record->personalization, personalization, sizeof(personalization), &personalization_len) ||
+        !vector_hex(record->returned_bits, expected, sizeof(expected), &expected_len) ||
+        entropy_len != 32U || nonce_len != 16U || expected_len != 64U) { return 0; }
+    if (bignum_ctr_drbg_instantiate(&context, entropy, entropy_len, nonce, nonce_len, personalization, personalization_len) != BIGNUM_CTR_DRBG_SUCCESS) { return 0; }
+    if (record->pr_entropy_count == 2U) {
+        for (index = 0U; index < 2U; ++index) {
+            if (!vector_hex(record->pr_entropy[index], entropy, sizeof(entropy), &entropy_len)) return 0;
+            extra_len = 0U;
+            if (index < record->additional_count && !vector_hex(record->additional[index], extra, sizeof(extra), &extra_len)) return 0;
+            if (bignum_ctr_drbg_reseed(&context, entropy, entropy_len, extra, extra_len) != BIGNUM_CTR_DRBG_SUCCESS ||
+                bignum_ctr_drbg_generate(&context, output, expected_len, NULL, 0U) != BIGNUM_CTR_DRBG_SUCCESS) { return 0; }
+        }
+    } else {
+        if (record->reseed_entropy[0] != '\0' &&
+            (!vector_hex(record->reseed_entropy, entropy, sizeof(entropy), &entropy_len) ||
+             !vector_hex(record->reseed_additional, extra, sizeof(extra), &extra_len) ||
+             bignum_ctr_drbg_reseed(&context, entropy, entropy_len, extra, extra_len) != BIGNUM_CTR_DRBG_SUCCESS)) return 0;
+        for (index = 0U; index < 2U; ++index) {
+            extra_len = 0U;
+            if (index < record->additional_count && !vector_hex(record->additional[index], extra, sizeof(extra), &extra_len)) return 0;
+            if (bignum_ctr_drbg_generate(&context, output, expected_len, extra, extra_len) != BIGNUM_CTR_DRBG_SUCCESS) { return 0; }
+        }
+    }
+    if (memcmp(output, expected, expected_len) != 0) {
+        fprintf(stderr, "vector COUNT %lu mismatch\n", record->count);
+        return 0;
+    }
+    return 1;
+}
+
+static int test_ctr_drbg_vectors(const char *library_path, const char *vector_path)
+{
+    FILE *file = fopen(vector_path, "r");
+    vector_record_t record;
+    char line[VECTOR_TEXT_CAP + 128U], section[64] = "";
+    size_t cases = 0U;
+    int active = 0;
+    (void)library_path;
+    if (file == NULL) return 0;
+    vector_reset(&record, "");
+    while (fgets(line, sizeof(line), file) != NULL) {
+        char *equals;
+        vector_trim(line);
+        if (line[0] == '[') {
+            if (strstr(line, "use df]") != NULL || strstr(line, "no df]") != NULL) {
+                if (active && strcmp(record.section, "[AES-256 use df]") == 0) {
+                    if (!vector_run_record(&record)) { fclose(file); return 0; }
+                    ++cases;
+                }
+                if (!vector_copy(section, sizeof(section), line)) { fclose(file); return 0; }
+                vector_reset(&record, section);
+                active = 0;
+            }
+            continue;
+        }
+        if (line[0] == '\0') {
+            if (record.entropy[0] != '\0' && record.returned_bits[0] != '\0') active = 1;
+            if (active && strcmp(record.section, "[AES-256 use df]") == 0) {
+                if (!vector_run_record(&record)) { fclose(file); return 0; }
+                ++cases;
+                vector_reset(&record, section);
+                active = 0;
+            }
+            continue;
+        }
+        equals = strstr(line, " = ");
+        if (equals != NULL) {
+            *equals = '\0';
+            vector_trim(line);
+            vector_trim(equals + 3);
+            if (strcmp(line, "COUNT") == 0 && record.entropy[0] != '\0' && record.returned_bits[0] != '\0') {
+                if (strcmp(record.section, "[AES-256 use df]") == 0) {
+                    if (!vector_run_record(&record)) { fclose(file); return 0; }
+                    ++cases;
+                }
+                vector_reset(&record, section);
+            }
+            if (!vector_field(&record, line, equals + 3)) { fclose(file); return 0; }
+        }
+    }
+    if (active && strcmp(record.section, "[AES-256 use df]") == 0) {
+        if (!vector_run_record(&record)) { fclose(file); return 0; }
+        ++cases;
+    }
+    fclose(file);
+    printf("C11 DRBG vectors: PASS (%zu cases)\n", cases);
+    return cases == 240U;
+}
+#endif

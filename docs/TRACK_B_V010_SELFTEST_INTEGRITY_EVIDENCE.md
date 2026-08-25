@@ -22,7 +22,7 @@ The module startup sequence accepts an externally supplied image-integrity resul
 | Fork ownership transition | `tools/test_ctr_drbg_context_fork.c` | PASS; inherited context rejected |
 | Concurrent independent contexts | `tools/test_ctr_drbg_context_mt.c` | PASS |
 | Assembly AES-256 KAT | `tools/test_ctr_drbg_aes_asm.c` | PASS |
-| NIST-style DRBG vectors | `tests/run_ctr_drbg_vectors.c` | PR=false 240/240; PR=true 240/240 |
+| NIST-style DRBG vectors | `tests/test_bignum_random.c` conditional C11 vector mode | PR=false 240/240; PR=true 240/240; 480 total |
 
 ## Integrity Evidence
 
