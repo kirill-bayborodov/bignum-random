@@ -10,6 +10,7 @@
 
 #include <stddef.h>
 #include <string.h>
+#include <unistd.h>
 
 #define BIGNUM_CONTEXT_COOKIE UINT64_C(0x425247434f4e5445)
 
@@ -48,7 +49,8 @@ static const bignum_ctr_drbg_module_ctx *module_const_of(const bignum_ctr_drbg_c
  */
 static int context_is_initialized(const bignum_ctr_drbg_context_t *context)
 {
-    return context != NULL && context->cookie == BIGNUM_CONTEXT_COOKIE;
+    return context != NULL && context->cookie == BIGNUM_CONTEXT_COOKIE &&
+           context->owner_process_id == (uint64_t)getpid();
 }
 
 /**
@@ -89,6 +91,7 @@ bignum_ctr_drbg_status_t bignum_ctr_drbg_context_init(bignum_ctr_drbg_context_t 
     if (context == NULL) return BIGNUM_CTR_DRBG_ERROR_NULL_ARG;
     secure_zero(context, sizeof(*context));
     context->cookie = BIGNUM_CONTEXT_COOKIE;
+    context->owner_process_id = (uint64_t)getpid();
     return BIGNUM_CTR_DRBG_SUCCESS;
 }
 

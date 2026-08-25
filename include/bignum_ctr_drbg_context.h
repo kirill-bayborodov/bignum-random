@@ -44,6 +44,7 @@ typedef struct bignum_ctr_drbg_context {
     max_align_t alignment; /**< Alignment anchor; caller must preserve object alignment. */
     unsigned char storage[sizeof(bignum_ctr_drbg_module_ctx)]; /**< Private lifecycle and DRBG storage; implementation-owned after init. */
     uint64_t cookie; /**< Initialization marker; callers must not inspect or modify it. */
+    uint64_t owner_process_id; /**< Creator process identifier; forked copies are fail-closed. */
 } bignum_ctr_drbg_context_t;
 
 /**

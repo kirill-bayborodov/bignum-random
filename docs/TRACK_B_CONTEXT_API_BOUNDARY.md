@@ -23,7 +23,7 @@ bignum_random_status_t bignum_random_context_uninstantiate(
 void bignum_random_context_destroy(bignum_random_context_t *context);
 ```
 
-The type is opaque to callers. `create` and `destroy` define the only ownership transfer; `destroy` must zeroize the complete context before releasing it. The candidate now uses caller-allocated storage through `bignum_ctr_drbg_context_t`. `bignum_ctr_drbg_context_size()` returns the exact allocation size; the object must be allocated with its natural alignment and must not be copied or inspected after initialization. `bignum_ctr_drbg_context_init()` zeroizes prior bytes and establishes a private initialization marker. The implementation stores the lifecycle and DRBG object inside opaque-style storage, while the public caller sees no AES expanded-key representation.
+The type is opaque to callers. `create` and `destroy` define the only ownership transfer; `destroy` must zeroize the complete context before releasing it. The candidate now uses caller-allocated storage through `bignum_ctr_drbg_context_t`. `bignum_ctr_drbg_context_size()` returns the exact allocation size; the object must be allocated with its natural alignment and must not be copied or inspected after initialization. `bignum_ctr_drbg_context_init()` zeroizes prior bytes and establishes a private initialization marker. The implementation stores the lifecycle and DRBG object inside opaque-style storage, while the public caller sees no AES expanded-key representation. The context also records its creator process identifier; a forked child fails closed when it tries to use an inherited context. The child must call `context_init()` on new storage before any Approved service operation.
 
 `module_startup` performs image-integrity and power-up self-tests once for the validated module image. `context_create` performs Approved DRBG instantiation only after startup is `READY`. `context_generate` obtains random words from the DRBG and applies the deterministic bounded rejection transform. `context_reseed` is allowed only in the lifecycle states where reseed is required. The entropy-provider callback is synchronous, caller-owned, and borrowed: it receives exactly 32 bytes of writable output, must either fill the complete buffer and return SUCCESS or return failure, and is never stored in the context. Provider failure zeroizes partial DRBG state and latches ERROR before returning; no provider callback is invoked from ERROR or ZEROIZED states. `context_uninstantiate` zeroizes DRBG and provider state and moves the context to `ZEROIZED`; `destroy` is idempotent only if that behavior is explicitly frozen in the final API.
 
@@ -72,7 +72,8 @@ The bounded sampler must request enough DRBG output for the active bound, mask o
 5. Port only the measured AES/DRBG leaf to YASM, retaining the C state machine and range sampler initially.
 6. Add ABI, fault-injection, zeroization, fork/thread, sanitization, and exact-image evidence.
 7. Freeze the caller-allocated context size/alignment and entropy-provider callback protocol only after CSTL review; the current values remain candidate engineering contracts.
-8. Perform CSTL pre-review before exposing an Approved mode in release documentation.
+8. Add and retain fork/process-ownership, thread-isolation, provider-health, sanitizer, and exact-image evidence.
+9. Perform CSTL pre-review before exposing an Approved mode in release documentation.
 
 ## Hard constraints
 
