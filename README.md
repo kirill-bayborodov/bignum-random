@@ -1,410 +1,157 @@
-# bignum-template
+# bignum-random
 
-[![C/ASM CI](https://github.com/kirill-bayborodov/bignum-template/actions/workflows/ci.yml/badge.svg)](https://github.com/kirill-bayborodov/bignum-template/actions/workflows/ci.yml)
-[![GitHub release](https://img.shields.io/github/v/release/kirill-bayborodov/bignum-template?label=release)](https://github.com/kirill-bayborodov/bignum-template/releases/latest)
+`bignum-random` — модуль C11/x86-64 YASM для выборки криптографически стойкого беззнакового `bignum_t` из полуинтервала **`[0, n)`**. Эталонная C11-реализация и production ASM-путь используют Linux `getrandom(2)` с urandom source. Модуль не применяет `% n`: он маскирует candidate до битовой длины `n` и выполняет rejection sampling, поэтому не создаёт modulo bias для произвольной положительной верхней границы.[1]
 
-`bignum-template` is a standalone C/ASM module that performs an in-place logical left shift of a `bignum_t`. The production path is an x86-64 YASM implementation conforming to the System V AMD64 ABI. The operation validates its argument, detects shifts that would lose significant bits beyond `BIGNUM_CAPACITY`, moves complete words and remaining bits, updates `len`, and normalizes leading zero words.
+> **Граница платформы.** Версия 1.0.0 предназначена для Linux x86-64 с System V AMD64 ABI. Вызов может блокироваться, пока ядро инициализирует urandom source; это корректное свойство криптографического источника, а не fallback на предсказуемый generator.[1]
 
-The module is intended as a template component of the `bignum-lib` family. In a derived repository, replace the operation-specific API and implementation while preserving the build, test, distribution, and benchmark conventions described here.
+## Distribution и зависимости
 
-## Distribution
+`bignum-core` является Git submodule в `libs/bignum-core`. `benchmark-framework` поставляется как vendor distribution в `libs/benchmark-framework/dist`, а не собирается из исходников потребляющим проектом. CI распаковывает опубликованный `dist` artifact именно в этот каталог; локальная подготовка должна повторять ту же схему.
 
-The required `bignum-core` component is included as a Git submodule at `libs/bignum-core`. The Makefile also links the distribution archives of the supporting `bignum-add-u64` and `bignum-cmp` components when they are present in `libs/`.
-
-| Component | Expected location | Purpose |
+| Компонент | Путь | Назначение |
 |---|---|---|
-| `bignum-core` | `libs/bignum-core` | Defines `bignum_t`, `BIGNUM_CAPACITY`, and common primitives |
-| `bignum-add-u64` | `libs/bignum-add-u64/dist` | Static library used by the template dependency graph |
-| `bignum-cmp` | `libs/bignum-cmp/dist` | Static library used by the template dependency graph |
-| `benchmark-framework` | `libs/benchmark-framework` | Pinned public `v1.0.0` C11 framework with `benchmark-core`, `json-lib`, matrix execution, and regression statistics |
+| `bignum-core` | `libs/bignum-core` | Определяет little-endian fixed-capacity `bignum_t` и `BIGNUM_CAPACITY`. |
+| `benchmark-framework` | `libs/benchmark-framework/dist` | Поставляет `benchmark_core.h`, static library, `bench_matrix` и `benchmark_stats`. |
+| `make`, `gcc`, `yasm` | System PATH | Сборка C11, YASM и distribution. |
+| `cppcheck`, `valgrind`, `pthread` | System PATH / libc | Static analysis, Helgrind и MT tests. |
+| `perf`, `taskset` | System PATH | Необязательные performance counters и CPU affinity. |
 
-Clone the repository with its submodule:
-
-```bash
-git clone --recurse-submodules https://github.com/kirill-bayborodov/bignum-template.git
-cd bignum-template
-```
-
-For an existing clone, initialize all submodules with:
+Клонируйте проект вместе с required core submodule, затем восстановите submodules существующего clone стандартной командой.
 
 ```bash
+git clone --recurse-submodules https://github.com/kirill-bayborodov/bignum-random.git
+cd bignum-random
 git submodule update --init --recursive
 ```
 
-If the linker reports missing `-lbignum_add_u64` or `-lbignum_cmp`, build or provide the matching component distributions so that the archives are available at the paths shown above.
+Скачайте последний reviewed `benchmark-framework` distribution в `libs/benchmark-framework/dist`. Его SHA-256 и release version должны фиксироваться в evidence конкретного benchmark run; не подменяйте library локально собранной непроверенной версией.
 
-## Features
+## Public API
 
-- **Production ASM path:** x86-64 YASM implementation for the System V AMD64 ABI.
-- **Explicit API status:** the public API exposes `bignum_template_status_t` rather than reusing a generic core status type.
-- **In-place logical shift:** complete-word and intra-word shifts are combined with carry propagation.
-- **Overflow protection:** shifts that would discard significant bits return an explicit error.
-- **Normalized representation:** successful operations update `len` and remove leading zero words.
-- **Deterministic verification:** unit, boundary, extended, multithreaded, and integration-runner tests are included.
-- **Reproducible benchmarks:** ST and MT runners accept deterministic seeds, report data fingerprints and checksums, and support legacy and parameterized workloads.
-- **Pinned C11 benchmark framework:** `libs/benchmark-framework` is pinned to `v1.0.0`; its recursive gitlinks pin `benchmark-core` and `json-lib`.
-- **Bignum domain adapter:** `benchmarks/adapter/` maps generic transport fields to bignum-specific `shift-*` and operand-length semantics without relabelling them as unrelated operations.
-- **Template benchmark protocol:** successful runners print a machine-readable `benchmark=...` line immediately before `Benchmark finished.`.
-- **Perf workflow:** Makefile targets provide sampling, repeated counter measurements, cloud-compatible software-event measurements, and report retention.
-
-## Dependencies
-
-| Dependency | Purpose |
-|---|---|
-| `make` | Build, test, lint, benchmark, and distribution targets |
-| `gcc` | C compilation and linking |
-| `yasm` | x86-64 assembly compilation |
-| `cppcheck` | Static analysis |
-| `perf` | Performance counters and sampling profiles |
-| `taskset` | CPU-affinity control for benchmarks |
-| `valgrind` | Helgrind race-detection target |
-| `pthread` | Multithreaded tests and benchmarks |
-
-The cloud benchmark target expects a `perf` binary compatible with the running kernel. In the current container workflow, this binary is configured by the `PERF` Makefile variable and is typically installed at `/usr/local/bin/perf`.
-
-## API
-
-The public API is declared in `include/bignum_template.h`:
+Публичный header — [`include/bignum_random.h`](include/bignum_random.h). `upper_bound` является borrowed normalized positive endpoint, `out` — caller-owned destination. Оба объекта не должны alias; API не выделяет и не сохраняет память.
 
 ```c
-typedef enum {
-    BIGNUM_TEMPLATE_SUCCESS        =  0,
-    BIGNUM_TEMPLATE_ERROR_NULL_ARG = -1,
-    BIGNUM_TEMPLATE_ERROR_OVERFLOW = -2
-} bignum_template_status_t;
-
-bignum_template_status_t bignum_template(
-    bignum_t *restrict num,
-    size_t template_amount);
+bignum_random_status_t bignum_random(bignum_t *out,
+                                     const bignum_t *upper_bound);
 ```
 
-### Contract
-
-| Condition | Return value | Result |
+| Условие | Named status | Состояние объектов |
 |---|---|---|
-| `num == NULL` | `BIGNUM_TEMPLATE_ERROR_NULL_ARG` | No `bignum_t` object is dereferenced |
-| `template_amount == 0` | `BIGNUM_TEMPLATE_SUCCESS` | Fast successful no-op |
-| Shift loses significant bits beyond `BIGNUM_CAPACITY` | `BIGNUM_TEMPLATE_ERROR_OVERFLOW` | No successful shifted result is produced |
-| Valid representable shift | `BIGNUM_TEMPLATE_SUCCESS` | `num` is shifted left in place; `len` is updated and normalized |
+| `out == NULL` или `upper_bound == NULL` | `BIGNUM_RANDOM_ERROR_NULL_ARG` | Ничего не dereference; существующий output не меняется. |
+| `out == upper_bound` | `BIGNUM_RANDOM_ERROR_ALIAS` | Оба records остаются неизменными. |
+| `upper_bound->len == 0` | `BIGNUM_RANDOM_ERROR_RANGE` | Интервал пуст; output неизменён. |
+| `upper_bound->len > BIGNUM_CAPACITY` | `BIGNUM_RANDOM_ERROR_LENGTH` | Malformed core record; output неизменён. |
+| Старшее active word равно нулю | `BIGNUM_RANDOM_ERROR_NORMALIZATION` | Unnormalized positive bound; output неизменён. |
+| `getrandom(2)` не завершил candidate | `BIGNUM_RANDOM_ERROR_ENTROPY` | Частичный candidate не публикуется; вызов можно повторить. |
+| Valid positive normalized bound | `BIGNUM_RANDOM_SUCCESS` | `out` normalized и равномерно распределён в `[0, upper_bound)`. |
 
-The operation is thread-safe when independent threads work with different, non-overlapping `bignum_t` objects. It mutates its `num` argument in place.
+Алгоритм сначала валидирует bounds, затем получает количество random bytes, равное active word span. Он очищает биты выше `bit_length(upper_bound)`, сравнивает candidate с `upper_bound` и повторяет запрос, если candidate не меньше bound. Для `k = bit_length(n)` вероятность принятия больше одной второй, поэтому expected candidate count меньше двух; тем не менее число retries data-dependent и не предназначено для context, где такое timing leakage секретно.
 
-For example:
+## Минимальный пример
+
+Ниже показан полный caller-owned scenario с проверкой named status. Bound `2^64 + 1` нормализован, а output storage существует весь вызов.
 
 ```c
 #include <stdint.h>
-#include "bignum_template.h"
+#include <stdio.h>
+#include <string.h>
+#include "bignum_random.h"
 
-typedef enum {
-    APPLICATION_STATUS_SUCCESS = 0,
-    APPLICATION_STATUS_SHIFT_ERROR = 1
-} application_status_t;
-
-application_status_t shift_value(bignum_t *value)
+int main(void)
 {
-    bignum_template_status_t status = bignum_template(value, 5U);
+    bignum_t upper_bound;
+    bignum_t value;
 
-    return status == BIGNUM_TEMPLATE_SUCCESS
-        ? APPLICATION_STATUS_SUCCESS
-        : APPLICATION_STATUS_SHIFT_ERROR;
+    memset(&upper_bound, 0, sizeof(upper_bound));
+    upper_bound.words[0] = UINT64_C(1);
+    upper_bound.words[1] = UINT64_C(1);
+    upper_bound.len = 2U;
+
+    if (bignum_random(&value, &upper_bound) != BIGNUM_RANDOM_SUCCESS) {
+        fputs("random sampling failed\n", stderr);
+        return 1;
+    }
+    return 0;
 }
 ```
 
-## Build and test
-
-Build the release object and source submodules:
+Соберите example после release build. `-no-pie` соответствует текущему family Makefile; при использовании static distribution предпочитайте описанную ниже библиотеку.
 
 ```bash
-make build CONFIG=release
+make build CONFIG=release USE_ASM=yes
+gcc example.c build/bignum_random.o \
+  -I./include -I./libs/bignum-core/include \
+  -o example -no-pie
+./example
 ```
 
-The production object is generated at:
+## Build, tests и quality gates
 
-```text
-build/bignum_template.o
-```
-
-Run the deterministic, extended, multithreaded, and integration-runner suite:
+Пока ASM production path не создан, C11 baseline собирается с `USE_ASM=no`. После создания `src/bignum_random.asm` значение `USE_ASM=auto` выбирает YASM; `USE_ASM=yes` выбирает его явно. Полный suite включает deterministic public contract, property/fuzz-style ranges, independent-object MT, distribution runner и benchmark-adapter tests.
 
 ```bash
-make test CONFIG=release
-```
-
-The expected summary is:
-
-```text
-=== Summary: 0 / 5 failed ===
-```
-
-Run static analysis:
-
-```bash
+make clean
+make test CONFIG=release USE_ASM=no
 make lint
+
+make clean
+make test_sanitize SAN=address CONFIG=debug USE_ASM=no
+make clean
+make test_sanitize SAN=undefined CONFIG=debug USE_ASM=no
+make clean
+make test_helgrind CONFIG=debug USE_ASM=no
 ```
 
-Run the sanitizer and race-detection targets:
-
-```bash
-make clean
-make test_sanitize SAN=address CONFIG=debug
-
-make clean
-make test_sanitize SAN=undefined CONFIG=debug
-
-make clean
-make test_helgrind CONFIG=debug
-```
-
-The test files are organized as follows:
-
-| File | Scope |
-|---|---|
-| `tests/test_bignum_template.c` | Deterministic API, contract, and boundary tests |
-| `tests/test_bignum_template_extra.c` | Extended state, preservation, and boundary checks |
-| `tests/test_bignum_template_mt.c` | Concurrent independent-object checks |
-| `tests/test_bignum_template_runner.c` | Distribution integration smoke test |
-| `tests/benchmark_adapter/test_bignum_template_benchmark_adapter.c` | C11 transport mapping, validation, deterministic initialization, operation, and checksum tests |
+C11 coverage измеряется через `gcov` с test binaries, собранными с `--coverage`. На review фиксируются line, branch и call coverage вместе с неисполненными platform-dependent error paths. Требования к file Doxygen, statuses, tests, JSON companion documents и ASM boundary находятся в [`docs/QUALITY_GATES_DOCUMENTATION_C11_JSON.md`](docs/QUALITY_GATES_DOCUMENTATION_C11_JSON.md).
 
 ## Benchmarks
 
-The active benchmark sources are:
+`benchmarks/adapter/` переводит neutral benchmark-core fields в deterministic **positive upper bounds**. Seed влияет только на construction bound; случайные output values намеренно не повторяются между runs. Checksum наблюдает result и bound, не выдавая random output как fixed oracle.
 
-```text
-benchmarks/bench_bignum_template.c
-benchmarks/bench_bignum_template_mt.c
-```
-
-Each successful run reports the selected mode, seed, input fingerprint, checksum, successful-call count, elapsed time, and nanoseconds per call. Its final two lines follow this stable protocol:
-
-```text
-benchmark=bignum_template_st ... elapsed_seconds=<seconds> ns_per_call=<nanoseconds>
-Benchmark finished.
-```
-
-The MT runner uses `benchmark=bignum_template_mt`. The trailing marker is the success condition checked by the Makefile; it must remain after the machine-readable line.
-
-| Mode | Input pattern | Purpose |
+| Profile axis | Допустимые значения | Значение |
 |---|---|---|
-| `all_zero` | Every input `bignum_t` is zero; shift amount is zero | Measures the zero-value fast path |
-| `all_nonzero` | Inputs are populated through `BIGNUM_CAPACITY` words with nonzero top words | Measures the normal nonzero shift path |
-| `mixed` | Alternating zero and nonzero input rows | Measures a mixed workload and branch behavior |
+| `input_kind` | `zero`, `nonzero`, `mixed` | `zero` создаёт singleton bound `1`, а не invalid bound `0`; `mixed` чередует safe cases. |
+| `operation_kind` | `random-one`, `random-word`, `random-range`, `random-mixed` | Форма upper bound для одной production random operation. |
+| `measure_mode` | `kernel-only`, `end-to-end` | Исключает либо включает copy/preparation state; системная entropy остаётся внутри обоих. |
+| `size_profile` | `one`, `quarter`, `half`, `variable`, `near-capacity` | Число 64-bit words upper bound. |
+| `capacity_profile` | `normal`, `near-capacity` | Valid boundary range, не malformed input. |
 
-### Single-thread CLI
-
-```text
-bin/bench_bignum_template \
-  [--data-mode all_zero|all_nonzero|mixed] \
-  [--input-kind zero|nonzero|mixed] \
-  [--operation-kind shift-zero|shift-bit|shift-word|shift-combined|shift-random|shift-mixed] \
-  [--measure-mode end-to-end|kernel-only] \
-  [--size-profile one|quarter|half|variable|near-capacity] \
-  [--capacity-profile normal|near-capacity] \
-  [--iterations N] [--warmup N] [--data-count N] [--seed N]
-```
-
-`--data-mode` preserves the three legacy scenarios. The independent `--input-kind`, `--operation-kind`, and `--size-profile` parameters select a custom profile and report `data_mode=custom`. `operation_kind` is a generic transport name, but the bignum adapter accepts only documented `shift-*` vocabulary and maps it to the actual bignum shift path.
-
-| Variable | Default | Meaning |
-|---|---:|---|
-| `BENCH_ITERATIONS` | `2000000000` | Number of ST calls; must be positive |
-| `BENCH_WARMUP` | `10000` | Calls completed before the timed ST interval |
-| `BENCH_DATA_COUNT` | `4096` | Size of the pre-generated immutable data pool |
-| `BENCH_SEED` | `0x9E3779B97F4A7C15` | Seed for deterministic pre-generated data |
-| `BENCH_INPUT_KIND` | `nonzero` | `zero`, `nonzero`, or `mixed` input profile |
-| `BENCH_OPERATION_KIND` | `shift-random` | `shift-zero`, `shift-bit`, `shift-word`, `shift-combined`, `shift-random`, or `shift-mixed` bignum operation transport value |
-| `BENCH_MEASURE_MODE` | `end-to-end` | `end-to-end` includes per-call preparation; `kernel-only` excludes workspace restoration from the accumulated interval |
-| `BENCH_SIZE_PROFILE` | `variable` | `one`, `quarter`, `half`, `variable`, or `near-capacity` bignum operand-length profile |
-| `BENCH_CAPACITY_PROFILE` | `normal` | `normal` or `near-capacity`; the latter creates a valid boundary operand without intentionally measuring overflow handling |
-
-CLI options override the corresponding environment variables. Example controlled ST comparison:
+Используйте standard manifest для short smoke run и full manifest для reviewed baseline. Каждый successful runner обязан вывести одну строку `benchmark=...` непосредственно перед `Benchmark finished.`; matrix tool проверяет этот порядок.
 
 ```bash
-./bin/bench_bignum_template \
-  --input-kind nonzero --operation-kind shift-combined --size-profile half \
-  --measure-mode end-to-end \
-  --iterations 1000000 --warmup 10000 --data-count 4096 \
-  --seed 123456789
-
-./bin/bench_bignum_template \
-  --input-kind nonzero --operation-kind shift-combined --size-profile half \
-  --measure-mode kernel-only \
-  --iterations 1000000 --warmup 10000 --data-count 4096 \
-  --seed 123456789
-```
-
-### Multithread CLI
-
-```text
-bin/bench_bignum_template_mt \
-  [--threads N] [--total-iterations N] \
-  [--data-mode all_zero|all_nonzero|mixed] \
-  [--input-kind zero|nonzero|mixed] \
-  [--operation-kind shift-zero|shift-bit|shift-word|shift-combined|shift-random|shift-mixed] \
-  [--measure-mode end-to-end|kernel-only] \
-  [--size-profile one|quarter|half|variable|near-capacity] \
-  [--capacity-profile normal|near-capacity] \
-  [--warmup N] [--data-count N] [--seed N]
-```
-
-MT workers are created once, complete warm-up before the timed interval, then synchronize through barriers. `kernel-only` reports the longest per-worker accumulated operation interval, excluding the restoration copy before each batch; `end-to-end` reports wall-clock time from the synchronized release through all workers' completion.
-
-| Variable | Default | Meaning |
-|---|---:|---|
-| `BENCH_MT_TOTAL_ITERATIONS` | `3200000000` | Total work across all threads; must be positive and divisible by the thread count |
-| `BENCH_MT_THREADS` | `2` | Number of benchmark worker threads; must be positive |
-| `BENCH_WARMUP` | `10000` | Warm-up calls per worker before the measured interval |
-| `BENCH_DATA_COUNT` | `4096` | Size of the shared immutable data pool |
-| `BENCH_SEED` | `0x9E3779B97F4A7C15` | Seed for deterministic pre-generated data |
-| `BENCH_INPUT_KIND` | `nonzero` | `zero`, `nonzero`, or `mixed` input profile |
-| `BENCH_OPERATION_KIND` | `shift-random` | `shift-zero`, `shift-bit`, `shift-word`, `shift-combined`, `shift-random`, or `shift-mixed` bignum operation transport value |
-| `BENCH_MEASURE_MODE` | `end-to-end` | `end-to-end` or `kernel-only` measurement mode |
-| `BENCH_SIZE_PROFILE` | `variable` | `one`, `quarter`, `half`, `variable`, or `near-capacity` bignum operand-length profile |
-| `BENCH_CAPACITY_PROFILE` | `normal` | `normal` or `near-capacity` boundary profile |
-
-For a fair one-thread/two-thread comparison, keep the total work and seed constant:
-
-```bash
-./bin/bench_bignum_template_mt \
-  --threads 1 \
-  --total-iterations 3200000000 \
-  --data-mode mixed
-
-./bin/bench_bignum_template_mt \
-  --threads 2 \
-  --total-iterations 3200000000 \
-  --data-mode mixed
-```
-
-The reusable benchmark implementation is the public `libs/benchmark-framework` Git submodule pinned to `v1.0.0`. The project-local ST and MT sources call its `benchmark-core` lifecycle through `benchmarks/adapter/bignum_template_benchmark_adapter.c`. The adapter validates bignum vocabulary, constructs deterministic `bignum_t` records, chooses representable shifts, and maps `bignum_template_status_t` to the named framework callback status.
-
-## Perf workflow
-
-Use the cloud-compatible target when hardware PMU events are unavailable:
-
-```bash
-make bench_cl CONFIG=release \
-  REPORT_NAME=baseline \
-  PERF_RUNS=7
-```
-
-`bench_cl` uses `task-clock`, `context-switches`, `cpu-migrations`, and `page-faults`. It does not create raw `perf.data` profiles and requires the kernel-compatible binary configured by `PERF`.
-
-On a host that supports the default hardware events, run the full ST/MT workflow for all three modes:
-
-```bash
-make bench_full CONFIG=release \
-  REPORT_NAME=baseline \
-  PERF_RUNS=7 \
-  KEEP_PERF=1
-```
-
-For targeted repeated measurements:
-
-```bash
-make bench_stat_st CONFIG=release \
-  REPORT_NAME=baseline_st_mixed \
-  DATA_MODE=mixed \
-  PERF_RUNS=7
-
-make bench_stat_mt CONFIG=release \
-  REPORT_NAME=baseline_mt_mixed \
-  DATA_MODE=mixed \
-  MT_THREADS=2 \
-  MT_CPU_LIST=0-1 \
-  MT_TOTAL_ITERATIONS=3200000000 \
-  PERF_RUNS=7
-```
-
-Reports are written to `benchmarks/reports/`. With `KEEP_PERF=1`, record-mode raw profiles are retained as `.perf.data` files. Keep `CONFIG`, `PERF_RUNS`, `DATA_MODE`, seed, thread count, CPU affinity, and total iterations constant when comparing implementations.
-
-### Parameterized JSON matrix and regression gate
-
-`bench_matrix` invokes the pinned C11 `bench_matrix` and `benchmark_stats` tools directly, without Python or hardware PMU events. The default `benchmarks/profiles/bignum_template_full.json` covers zero fast-paths, bit/word/combined shifts, one/quarter/half/variable operand lengths, and safe near-capacity cases. `benchmarks/profiles/bignum_template_standard.json` is the shorter bignum-specific smoke manifest and can be selected through `BENCH_MATRIX_PROFILE`. Each JSON manifest has a companion how-to document with its exact vocabulary and baseline workflow.
-
-```bash
-make bench_matrix CONFIG=release \
-  REPORT_NAME=baseline \
-  BENCH_MATRIX_REPETITIONS=7 \
-  BENCH_MATRIX_ITERATIONS=200000000 \
-  BENCH_MATRIX_MT_TOTAL_ITERATIONS=320000000 \
+make bench_matrix CONFIG=release USE_ASM=no \
+  REPORT_NAME=random_c11_smoke \
+  BENCH_MATRIX_PROFILE=benchmarks/profiles/bignum_random_standard.json \
+  BENCH_MATRIX_REPETITIONS=1 \
+  BENCH_MATRIX_ITERATIONS=1000 \
+  BENCH_MATRIX_MT_TOTAL_ITERATIONS=2000 \
+  BENCH_MATRIX_WARMUP=10 \
+  BENCH_MATRIX_DATA_COUNT=32 \
   MT_THREADS=2
 ```
 
-The target writes `benchmarks/reports/baseline_matrix.json` and `benchmarks/reports/baseline_matrix_summary.json`. The raw artifact preserves host metadata, the manifest hash, commands, stdout/stderr, and parsed protocol values. The summary stores robust per-profile ST/MT statistics: median, mean, sample standard deviation, and MAD.
+Full baseline and ASM comparison instructions, JSON schema, profile identifiers, failure semantics and regression policy are maintained beside the manifests: [`bignum_random_standard.json.md`](benchmarks/profiles/bignum_random_standard.json.md) and [`bignum_random_full.json.md`](benchmarks/profiles/bignum_random_full.json.md). Compare only matching profile set, machine topology, compiler, configuration, seed, total work, worker count and measurement scope. Syscall and scheduler variation require median/MAD evidence, not a single timing number.
 
-To compare a candidate with a reviewed baseline, pass the reference JSON explicitly. The target rejects absent/extra profile IDs and fails only when candidate median `ns_per_call` is both above the configured percentage threshold and above the baseline MAD noise floor.
+## Installation и cleanup
 
-```bash
-make bench_matrix CONFIG=release \
-  REPORT_NAME=candidate \
-  BENCH_BASELINE=benchmarks/reports/baseline_matrix.json \
-  BENCH_REGRESSION_THRESHOLD_PCT=5
-```
-
-Do not replace a baseline automatically. Create it from a reviewed reproducible run with stable host topology, CPU affinity, compiler version, workload settings, and source revision.
-
-For a short cloud smoke test, combine the documented environment variables with the Makefile target:
+Object-file distribution and static-library/single-header distribution are generated by the unchanged Makefile. Both commands run the distribution integration runner.
 
 ```bash
-BENCH_ITERATIONS=100000 \
-BENCH_MT_TOTAL_ITERATIONS=100000 \
-BENCH_SEED=123456789 \
-make bench_cl CONFIG=release REPORT_NAME=smoke PERF_RUNS=1 \
-  MT_TOTAL_ITERATIONS=100000
-```
-
-## Installation and distribution
-
-Build the object-file distribution:
-
-```bash
-make install CONFIG=release
-```
-
-Build the single-header and static-library distribution:
-
-```bash
-make dist CONFIG=release
-```
-
-Remove generated artifacts:
-
-```bash
+make install CONFIG=release USE_ASM=yes
+make dist CONFIG=release USE_ASM=yes
 make clean
 ```
 
-## Linking the object file
+`make bench_cl` additionally requires a kernel-compatible profiler at the `PERF` path configured by the Makefile. If the host does not provide that binary, use `bench_matrix`: it uses no hardware PMU events and remains the required C11 baseline/ASM comparison route.
 
-For development builds, first compile the module and its source dependencies:
+## Contribution
 
-```bash
-make build CONFIG=release
-```
-
-Then link your application with the component object and the required include paths:
-
-```bash
-gcc your_app.c \
-  build/bignum_template.o \
-  -I./include \
-  -I./libs/bignum-core/include \
-  -o your_app \
-  -no-pie
-```
-
-If the application requires symbols from the template dependency graph, prefer the distribution created by `make dist CONFIG=release` and link the resulting static library with the corresponding component libraries.
-
-## Contributing
-
-Contributions should preserve the public C/ASM contract, update deterministic and multithreaded tests when behavior changes, and run at least:
-
-```bash
-make test CONFIG=release
-make lint
-```
-
-Performance changes should include reproducible benchmark parameters, matching ST/MT evidence, and a comparison that uses the same mode, seed, total work, thread count, CPU affinity, and counter configuration.
+Любое изменение API, statuses, benchmark vocabulary, profile ID или observable output должно изменять implementation, public documentation, tests and companion JSON documents в одном reviewable diff. Не изменяйте `.github/workflows/ci.yml` или `Makefile`; если новый operation cannot be integrated within their existing contract, оформите отдельное proposal с path, причиной, risk и removal condition. Перед review выполните applicable commands из этого README и per-artifact checklist из quality-gate document.
 
 ## License
 
-This project is licensed under the MIT License. See [LICENSE](LICENSE) for details.
+Проект лицензирован по [MIT License](LICENSE).
+
+## References
+
+[1] [Linux `getrandom(2)` manual page](https://man7.org/linux/man-pages/man2/getrandom.2.html)

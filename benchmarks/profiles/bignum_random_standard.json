@@ -1,0 +1,46 @@
+{
+  "schema_version": 1,
+  "description": "bignum_random standard smoke matrix: singleton, word, range and near-capacity bounds",
+  "profiles": [
+    {
+      "id": "singleton-one-kernel",
+      "input_kind": "zero",
+      "operation_kind": "random-one",
+      "measure_mode": "kernel-only",
+      "size_profile": "one",
+      "capacity_profile": "normal"
+    },
+    {
+      "id": "word-one-kernel",
+      "input_kind": "nonzero",
+      "operation_kind": "random-word",
+      "measure_mode": "kernel-only",
+      "size_profile": "one",
+      "capacity_profile": "normal"
+    },
+    {
+      "id": "range-half-e2e",
+      "input_kind": "nonzero",
+      "operation_kind": "random-range",
+      "measure_mode": "end-to-end",
+      "size_profile": "half",
+      "capacity_profile": "normal"
+    },
+    {
+      "id": "mixed-variable-kernel",
+      "input_kind": "mixed",
+      "operation_kind": "random-mixed",
+      "measure_mode": "kernel-only",
+      "size_profile": "variable",
+      "capacity_profile": "normal"
+    },
+    {
+      "id": "range-near-capacity-kernel",
+      "input_kind": "nonzero",
+      "operation_kind": "random-range",
+      "measure_mode": "kernel-only",
+      "size_profile": "near-capacity",
+      "capacity_profile": "near-capacity"
+    }
+  ]
+}
