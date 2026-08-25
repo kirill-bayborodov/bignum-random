@@ -1,5 +1,5 @@
 #include "bignum_ctr_drbg.h"
-#include "bignum_ctr_drbg_module.h"
+#include "bignum_ctr_drbg_context.h"
 
 #include <stdint.h>
 #include <stdio.h>
