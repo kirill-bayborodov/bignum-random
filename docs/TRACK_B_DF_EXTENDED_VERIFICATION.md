@@ -4,7 +4,7 @@
 
 ## Repository Publication
 
-The DF/BCC implementation and documentation were pushed to `origin/main` at commit `459d724`. The subsequent NULL-output validation hardening and this report are pending the next publication commit.
+The DF/BCC implementation and documentation were initially pushed to `origin/main` at commit `459d724`; subsequent NULL-output validation hardening and extended verification were published in follow-up commits. The current release preparation continues from the resulting clean main branch.
 
 ## Boundary Fuzzing with Snapshots
 

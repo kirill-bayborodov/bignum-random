@@ -3,11 +3,15 @@
 [![C/ASM CI](https://github.com/kirill-bayborodov/bignum-random/actions/workflows/ci.yml/badge.svg)](https://github.com/kirill-bayborodov/bignum-random/actions/workflows/ci.yml)
 [![GitHub release](https://img.shields.io/github/v/release/kirill-bayborodov/bignum-random?label=release)](https://github.com/kirill-bayborodov/bignum-random/releases/latest)
 
-`bignum-random` is a standalone C11 and x86-64 YASM module for sampling a cryptographically random unsigned `bignum_t` from the half-open interval **`[0, n)`**. The public operation validates the caller-supplied normalized upper bound, obtains entropy from Linux `getrandom(2)`, restricts a candidate to the bound bit width, and uses rejection sampling instead of `% n`. This avoids modulo bias for every positive bound.[1]
+`bignum-random` is a standalone C11 and x86-64 YASM module for sampling a cryptographically random unsigned `bignum_t` from the half-open interval **`[0, n)`**. The public operation validates the caller-supplied normalized upper bound, obtains entropy from Linux `getrandom(2)`, restricts a candidate to the bound bit width, and uses rejection sampling instead of `% n`. This avoids modulo bias for every positive bound.[2]
 
 The module is part of the `bignum-lib` family. It follows the family build, test, distribution, benchmark, documentation, and machine-readable runner conventions. The production assembly path targets Linux x86-64 using the System V AMD64 ABI; the C11 source is a readable reference implementation and baseline.
 
-> **Platform boundary.** Version 1.0.0 requires Linux x86-64 and the `getrandom(2)` system call. A call may block while the kernel initializes its urandom source. This is a cryptographic-source property, not a fallback to a predictable pseudo-random generator.[1]
+> **Platform boundary.** Version 0.1.0 requires Linux x86-64 and the `getrandom(2)` system call. This release includes the AES-256 CTR_DRBG DF/BCC YASM leaves behind the documented AES-NI runtime dispatcher. A call may block while the kernel initializes its urandom source. This is a cryptographic-source property, not a fallback to a predictable pseudo-random generator.[1]
+
+## Release status
+
+Version **0.1.0** is the first tagged release of the current Track B candidate implementation. It provides the bounded `bignum_random` API together with the AES-256 CTR_DRBG DF/BCC YASM leaves, runtime AES-NI dispatch, C11 fallback, deterministic verification artifacts, and documented Linux x86-64 constraints. This release is an engineering artifact and must not be represented as an issued FIPS 140-3 certificate.[4]
 
 ## Features
 
@@ -186,7 +190,7 @@ make bench_matrix CONFIG=release USE_ASM=no \
 
 Compare C11 and ASM only with the same manifest, compiler configuration, CPU affinity, topology, seed, total work, worker count, and measurement scope. A reviewed claim needs medians, MAD noise evidence, raw reports, and a paired or interleaved execution plan; one timing number is not a performance conclusion. The full manifest companion documents define schema, profile IDs, failure semantics, and comparison policy: [`bignum_random_standard.json.md`](benchmarks/profiles/bignum_random_standard.json.md) and [`bignum_random_full.json.md`](benchmarks/profiles/bignum_random_full.json.md).
 
-For the current optimization evidence, see [`docs/BENCHMARK_ANALYSIS_AND_ASM_OPTIMIZATION.md`](docs/BENCHMARK_ANALYSIS_AND_ASM_OPTIMIZATION.md).
+For current optimization evidence, see [`docs/BENCHMARK_ANALYSIS_AND_ASM_OPTIMIZATION.md`](docs/BENCHMARK_ANALYSIS_AND_ASM_OPTIMIZATION.md), [`docs/TRACK_B_DF_EXTENDED_VERIFICATION.md`](docs/TRACK_B_DF_EXTENDED_VERIFICATION.md), and [`docs/TRACK_B_DF_BCC_ABI.md`](docs/TRACK_B_DF_BCC_ABI.md).
 
 ## Installation, distribution, and cleanup
 
@@ -216,4 +220,10 @@ This project is distributed under the [MIT License](LICENSE). The license permit
 
 ## References
 
-[1] [Linux `getrandom(2)` manual page](https://man7.org/linux/man-pages/man2/getrandom.2.html)
+[1]: https://man7.org/linux/man-pages/man2/getrandom.2.html "Linux getrandom(2) manual page"
+
+[2]: https://csrc.nist.gov/pubs/sp/800/90/a/r1/final "NIST SP 800-90A Rev. 1"
+
+[3]: https://csrc.nist.gov/pubs/fips/197/final "FIPS 197 Advanced Encryption Standard"
+
+[4]: https://csrc.nist.gov/pubs/fips/140-3/final "FIPS 140-3 Security Requirements for Cryptographic Modules"

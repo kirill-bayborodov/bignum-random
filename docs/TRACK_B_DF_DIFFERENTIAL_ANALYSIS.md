@@ -16,7 +16,7 @@ The direct BCC comparison passed on the same style of stream, so the isolated di
 
 After the key-schedule fix, runtime activation produced passing CTR_DRBG output against both vector suites. The dispatcher now selects YASM DF when AES-NI and all required symbols are available, and retains the C11 fallback otherwise. This preserves fail-closed dispatch behavior while enabling the verified optimized path.
 
-## Required Next Diagnostic
+## Snapshot Isolation and Maintenance
 
 The snapshot harness was compiled only with the `BIGNUM_DRBG_DF_SNAPSHOT` test define and was kept outside the production tree. No deterministic provider, snapshot hook, or fault seam enters the production archive. Future changes must retain the same separation and rerun the intermediate-state equivalence gate.
 
