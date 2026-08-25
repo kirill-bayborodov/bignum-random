@@ -24,13 +24,17 @@ The implementation is the repository's self-contained AES-256 CTR_DRBG candidate
 From the repository root, build the shared reference object and execute:
 
 ```sh
+mkdir -p /tmp/bignum-random-drbg-build
 gcc -std=c11 -Wall -Wextra -Werror -pedantic -fPIC -shared \
   -Iinclude src/bignum_ctr_drbg.c \
   -o /tmp/bignum-random-drbg-build/libbignum_ctr_drbg.so
-python3 tests/run_ctr_drbg_vectors.py \
+gcc -std=c11 -Wall -Wextra -Werror -pedantic \
+  -Iinclude tests/run_ctr_drbg_vectors.c -ldl \
+  -o /tmp/bignum-random-drbg-build/run_ctr_drbg_vectors
+/tmp/bignum-random-drbg-build/run_ctr_drbg_vectors \
   /tmp/bignum-random-drbg-build/libbignum_ctr_drbg.so \
   tests/vectors/nist/ctr_drbg_pr_false.rsp
-python3 tests/run_ctr_drbg_vectors.py \
+/tmp/bignum-random-drbg-build/run_ctr_drbg_vectors \
   /tmp/bignum-random-drbg-build/libbignum_ctr_drbg.so \
   tests/vectors/nist/ctr_drbg_pr_true.rsp
 ```
@@ -45,14 +49,14 @@ gcc -std=c11 -Wall -Wextra -Werror -pedantic -fPIC -shared \
 LD_PRELOAD="$(gcc -print-file-name=libasan.so)" \
   ASAN_OPTIONS=detect_leaks=0:halt_on_error=1 \
   UBSAN_OPTIONS=halt_on_error=1 \
-  python3 tests/run_ctr_drbg_vectors.py \
+  /tmp/bignum-random-drbg-build/run_ctr_drbg_vectors \
   /tmp/bignum-random-drbg-build/libbignum_ctr_drbg_san.so \
   tests/vectors/nist/ctr_drbg_pr_false.rsp
 ```
 
 ## Interpretation and remaining gate
 
-The result verifies the candidate AES implementation, BCC, Block_Cipher_df, counter increment, state update, non-prediction-resistant state transitions, and the prediction-resistance flow in which NIST 9.3.1 passes AdditionalInput into Reseed_function and clears it before Generate_algorithm. It does not establish the entropy-source claim, health-test behavior, fail-closed lifecycle, image-integrity mechanism, module boundary, assembly equivalence, or CAVP/CMVP status. The protected Makefile currently selects only the family-named production source, so the new context API remains a candidate reference translation unit until the packaging decision is implemented in both C11 and YASM production paths.
+The result verifies the candidate AES implementation, BCC, Block_Cipher_df, counter increment, state update, non-prediction-resistant state transitions, and the prediction-resistance flow in which NIST 9.3.1 passes AdditionalInput into Reseed_function and clears it before Generate_algorithm. It does not establish the entropy-source claim, health-test behavior, fail-closed lifecycle, image-integrity mechanism, module boundary, assembly equivalence, or CAVP/CMVP status. The vector runner is implemented in strict C11 and uses only the POSIX dynamic-linking interface required to load the test library; no Python source is required by this reproduction path.
 
 The deterministic negative-path harness is `tools/test_ctr_drbg_candidate.c`. It verifies null and malformed inputs, preservation of an existing context after rejected instantiation, blocked use of an uninitialized context, output preservation on rejected generation, oversized additional input, reseed-limit transition, integrity-gated startup, fail-closed module error behavior, transition to `RESEED_REQUIRED`, repeated blocking before reseed, and zeroization of the DRBG SSP while retaining the `ZEROIZED` lifecycle marker. Both strict and ASan/UBSan builds pass. The harness is kept under `tools/` because the protected Makefile automatically treats every `tests/*.c` file as a production test target.
 
