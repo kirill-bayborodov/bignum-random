@@ -337,6 +337,7 @@ bignum_ctr_drbg_status_t bignum_ctr_drbg_block_cipher_df_dispatch(
     const uint8_t *input, size_t input_len,
     uint8_t output[BIGNUM_CTR_DRBG_SEED_BYTES])
 {
+    if (output == NULL) return BIGNUM_CTR_DRBG_ERROR_NULL_ARG;
 #if defined(__GNUC__) || defined(__clang__)
     if (input_len <= BIGNUM_CTR_DRBG_MAX_INPUT_BYTES &&
         (input_len == 0U || input != NULL) && output != NULL &&
