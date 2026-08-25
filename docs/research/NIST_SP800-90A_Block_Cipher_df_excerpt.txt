@@ -1,0 +1,227 @@
+this DRBG mechanism depends (i.e., V and Key are the “secret values” of the internal state).
+10.2.1.2     The Update Function (CTR_DRBG_Update)
+
+The CTR_DRBG_Update function updates the internal state of the CTR_DRBG using the
+provided_data. The values for blocklen, keylen and seedlen are provided in Table 3 of Section
+10.2.1. The value of ctr_len is known by an implementation. The block cipher operation in step
+2.2 of the CTR_DRBG_UPDATE process uses the selected block cipher algorithm. The
+specification of Block_Encrypt is discussed in Section 10.3.3.
+The following or an equivalent process shall be used as the CTR_DRBG_Update function.
+   CTR_DRBG_Update (provided_data, Key, V):
+       1. provided_data: The data to be used. This must be exactly seedlen bits in length; this
+          length is guaranteed by the construction of the provided_data in the instantiate,
+          reseed and generate functions.
+       2. Key: The current value of Key.
+       3. V: The current value of V.
+   Output:
+       1. K: The new value for Key.
+       2. V: The new value for V.
+   CTR_DRBG_Update Process:
+       1. temp = Null.
+       2. While (len (temp) < seedlen) do
+           2.1   If ctr_len < blocklen
+                    2.1.1 inc = (rightmost (V, ctr_len) + 1) mod 2ctr_len.
+                    2.1.2 V = leftmost (V, blocklen-ctr_len) || inc.
+                 Else V = (V+1) mod 2blocklen.
+           2.2   output_block = Block_Encrypt (Key, V).
+           2.3   temp = temp || output_block.
+       3. temp = leftmost (temp, seedlen).
+       4   temp = temp ⊕ provided_data.
+       5. Key = leftmost (temp, keylen).
+       6. V = rightmost (temp, blocklen).
+
+
+
+                                                 51
+NIST SP 800-90A Rev. 1                                             Recommendation for Random Number
+                                                                    Generation Using Deterministic RBGs
+
+
+       7. Return (Key, V).
+10.2.1.3     Instantiation of CTR_DRBG
+
+Notes for the instantiate function specified in Section 9.1:
+   The instantiation of CTR_DRBG requires a call to the Instantiate_function specified in
+   Section 9.1. Process step 9 of that function calls the instantiate algorithm specified in this
+   section. The values of highest_supported_security_strength and min_length are provided in
+   Table 3 of Section 10.2.1. The contents of the internal state are provided in Section 10.2.1.1.
+The instantiate algorithm:
+   For this DRBG mechanism, there are two cases for processing. In each case, let
+   CTR_DRBG_Update be the function specified in Section 10.2.1.2. The output block length
+   (blocklen), key length (keylen), seed length (seedlen) and security_strengths for the block
+
+--- DF ---
+    10.3.2      Derivation Function Using a Block Cipher Algorithm (Block_Cipher_df)
+
+    This derivation function is used by the CTR_DRBG that is specified in Section 10.2. BCC and
+    Block_Encrypt are discussed in Section 10.3.3. Let outlen be its output block length, which is a
+    multiple of eight bits for the approved block cipher algorithms, and let keylen be the key length.
+    The following or an equivalent process shall be used to derive the requested number of bits.
+    Block_Cipher_df (input_string, no_of_bits_to_return):
+       1. input_string: The string to be operated on. This string shall be a multiple of eight bits.
+       2. no_of_bits_to_return: The number of bits to be returned by Block_Cipher_df. The
+          maximum length (max_number_of_bits) is 512 bits for the currently approved block
+          cipher algorithms.
+    Output:
+       1. status: The status returned from Block_Cipher_df. The status will indicate SUCCESS or
+          ERROR_FLAG.
+       2. requested_bits: The result of performing the Block_Cipher_df.
+    Block_Cipher_df Process:
+       1. If (number_of_bits_to_return > max_number_of_bits), then return an ERROR_FLAG
+          and a Null string.
+
+
+
+
+                                                        59
+NIST SP 800-90A Rev. 1                                               Recommendation for Random Number
+                                                                      Generation Using Deterministic RBGs
+
+
+   2. L = len (input_string)/8.                  Comment: L is the bitstring representation of the
+                                                 integer resulting from len (input_string)/8. L shall
+                                                 be represented as a 32-bit integer.
+   3. N = number_of_bits_to_return/8.            Comment: N is the bitstring representation of the
+                                                 integer resulting from number_of_bits_to_return/8.
+                                                 N shall be represented as a 32-bit integer.
+                                                 Comment: Prepend the string length and the
+                                                 requested length of the output to the input_string.
+   4. S = L || N || input_string || 0x80.
+                                                 Comment: Pad S with zeros, if necessary.
+   5. While (len (S) mod outlen) ≠ 0, do
+               S = S || 0x00.
+                                                 Comment: Compute the starting value.
+   6. temp = the Null string.
+   7. i = 0.                                     Comment: i shall be represented as a 32-bit integer,
+                                                 i.e., len (i) = 32.
+   8. K = leftmost (0x00010203...1D1E1F, keylen).
+   9. While len (temp) < keylen + outlen, do
+         9.1     IV = i || 0outlen - len (i).    Comment: The 32-bit integer representation of i is
+                                                 padded with zeros to outlen bits.
+         9.2     temp = temp || BCC (K, (IV || S)).
+         9.3     i = i + 1.
+                                                 Comment: Compute the requested number of bits.
+   10. K = leftmost (temp, keylen).
+   11. X = select (temp, keylen+1, keylen+outlen).
+   12. temp = the Null string.
+   13. While len (temp) < number_of_bits_to_return, do
+         13.1 X = Block_Encrypt (K, X).
+         13.2 temp = temp || X.
+   14. requested_bits = leftmost (temp, number_of_bits_to_return).
+   15. Return (SUCCESS, requested_bits).
+10.3.3         BCC and Block_Encrypt
+
+Block_Encrypt is used for convenience in the specification of the BCC function. This function
+is not specifically defined in this Recommendation, but has the following meaning:
+
+
+
+                                                      60
+NIST SP 800-90A Rev. 1                                            Recommendation for Random Number
+                                                                   Generation Using Deterministic RBGs
+
+
+   Block_Encrypt: A basic encryption operation that uses the selected block cipher algorithm.
+   The function call is:
+                         output_block = Block_Encrypt (Key, input_block)
+   For TDEA, the basic encryption operation is called the forward cipher operation (see [SP
+   800-67]); for AES, the basic encryption operation is called the cipher operation (see [FIPS
+   197]). The basic encryption operation is equivalent to an encryption operation on a single
+   block of data using the ECB mode.
+For the BCC function, let outlen be the length of the output block of the block cipher algorithm
+to be used.
+The following or an equivalent process shall be used to derive the requested number of bits.
+BCC (Key, data):
+   1. Key: The key to be used for the block cipher operation.
+   2. data: The data to be operated upon. Note that the length of data must be a multiple of
+      outlen. This is guaranteed by Block_Cipher_df process steps 4 and 8.1 in Section 10.3.2.
+Output:
+   1. output_block: The result to be returned from the BCC operation.
+BCC Process:
+   1. chaining_value = 0outlen.       Comment: Set the first chaining value to outlen zeros.
+
+--- instantiate/generate with DF ---
+       8. Return (V, Key, reseed_counter).
+10.2.1.3.2     Instantiation When a Derivation Function is Used
+
+When instantiation is performed using this method, the entropy input may or may not have full
+entropy; in either case, a nonce is required.
+Let df be the derivation function specified in Section 10.3.2. When instantiation is performed
+using this method, a nonce is required, whereas using the method in Section 10.2.1.3.1 does not
+require a nonce, since full entropy is provided when using that method.
+The following process or its equivalent shall be used as the instantiate algorithm for this DRBG
+mechanism:
+   CTR_DRBG_Instantiate_algorithm (entropy_input, nonce, personalization_string,
+     security_strength):
+       1. entropy_input: The string of bits obtained from the randomness source.
+       2. nonce: A string of bits as specified in Section 8.6.7.
+       3. personalization_string: The personalization string received from the consuming
+          application. Note that the length of the personalization_string may be zero.
+       4. security_strength: The security strength for the instantiation. This parameter is
+          optional for CTR_DRBG, since it is not used.
+   Output:
+       1. initial_working_state: The initial values for V, Key, and reseed_counter (see Section
+          10.2.1.1).
+   CTR_DRBG Instantiate Process:
+       1. seed_material = entropy_input || nonce || personalization_string.
+                                             Comment: Ensure that the length of the
+                                             seed_material is exactly seedlen bits.
+       2. seed_material = df (seed_material, seedlen).
+       3. Key = 0keylen.                     Comment: keylen bits of zeros.
+                 blocklen
+       4. V = 0             .                Comment: blocklen bits of zeros.
+       5. (Key, V) = CTR_DRBG_Update (seed_material, Key, V).
+       6. reseed_counter = 1.
+       7. Return (V, Key, reseed_counter).
+
+       8. Return (SUCCESS, returned_bits, Key, V, reseed_counter).
+10.2.1.5.2         Generating Pseudorandom Bits When a Derivation Function is Used
+
+This method of generating bits is used when a derivation function is used by an implementation.
+Let df be the derivation function specified in Section 10.3.2.
+The following process or its equivalent shall be used as the generate algorithm for this DRBG
+mechanism (see step 8 of the generate process in Section 9.3.3):
+   CTR_DRBG_Generate_algorithm (working_state, requested_number_of_bits,
+     additional_input):
+       1. working_state: The current values for V, Key, and reseed_counter (see Section
+          10.2.1.1).
+       2. requested_number_of_bits: The number of pseudorandom bits to be returned to the
+          generate function.
+       3. additional_input: The additional input string received from the consuming
+          application. Note that the length of the additional_input string may be zero.
+   Output:
+       1. status: The status returned from the function. The status will indicate SUCCESS, or
+          indicate that a reseed is required before the requested pseudorandom bits can be
+          generated.
+       2. returned_bits: The pseudorandom bits returned to the generate function.
+       3. working_state: The new values for V, Key, and reseed_counter.
+   CTR_DRBG Generate Process:
+       1. If reseed_counter > reseed_interval, then return an indication that a reseed is
+          required.
+       2. If (additional_input ≠ Null), then
+                   2.1 additional_input = Block_Cipher_df (additional_input, seedlen).
+                   2.2 (Key, V) = CTR_DRBG_Update (additional_input, Key, V).
+             Else additional_input = 0seedlen.
+       3. temp = Null.
+
+
+                                                    57
+NIST SP 800-90A Rev. 1                                               Recommendation for Random Number
+                                                                      Generation Using Deterministic RBGs
+
+
+         4. While (len (temp) < requested_number_of_bits) do:
+            4.1   If ctr_len < blocklen
+                  4.1.1 inc = (rightmost (V, ctr_len) + 1) mod 2ctr_len.
+                  4.1.2 V = leftmost (V, blocklen-ctr_len) || inc.
+                  Else
+                  4.1.2 V = (V+1) mod 2blocklen.
+            4.2   output_block = Block_Encrypt (Key, V).
+            4.3   temp = temp || output_block.
+         5. returned_bits = leftmost (temp, requested_number_of_bits).
+                                               Comment: Update for backtracking resistance.
+         6. (Key, V) = CTR_DRBG_Update (additional_input, Key, V).
+         7. reseed_counter = reseed_counter + 1.
+         8. Return (SUCCESS, returned_bits, Key, V, reseed_counter).
+
+10.3 Auxiliary Functions
