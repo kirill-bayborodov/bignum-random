@@ -18,6 +18,10 @@
 #define BIGNUM_WEAK
 #endif
 
+extern void bignum_ctr_drbg_aes256_expand_key_asm(
+    const uint8_t key[BIGNUM_CTR_DRBG_KEY_BYTES],
+    uint8_t expanded_key[BIGNUM_CTR_DRBG_EXPANDED_KEY_BYTES]) BIGNUM_WEAK;
+
 extern void bignum_ctr_drbg_aes256_encrypt_expanded_asm(
     const uint8_t expanded_key[BIGNUM_CTR_DRBG_EXPANDED_KEY_BYTES],
     const uint8_t input[BIGNUM_CTR_DRBG_BLOCK_BYTES],
@@ -173,7 +177,7 @@ void bignum_ctr_drbg_aes256_encrypt_expanded(const uint8_t expanded_key[240], co
 static void aes_encrypt_block(const uint8_t key[32], const uint8_t input[16], uint8_t output[16])
 {
     uint8_t expanded[AES_EXPANDED_KEY_BYTES];
-    bignum_ctr_drbg_aes256_expand_key(key, expanded);
+    bignum_ctr_drbg_aes256_expand_key_dispatch(key, expanded);
     bignum_ctr_drbg_aes256_encrypt_dispatch(expanded, input, output);
     secure_zero(expanded, sizeof(expanded));
 }
@@ -198,10 +202,25 @@ int bignum_ctr_drbg_aes256_backend(void)
 {
 #if defined(__GNUC__) || defined(__clang__)
     return bignum_ctr_drbg_aes256_runtime_has_aesni() &&
+           bignum_ctr_drbg_aes256_expand_key_asm != 0 &&
            bignum_ctr_drbg_aes256_encrypt_expanded_asm != 0 ? 1 : 0;
 #else
     return 0;
 #endif
+}
+
+/** @brief Expands through YASM when both AES-NI leaves are linked, else C. */
+void bignum_ctr_drbg_aes256_expand_key_dispatch(
+    const uint8_t key[BIGNUM_CTR_DRBG_KEY_BYTES],
+    uint8_t expanded_key[BIGNUM_CTR_DRBG_EXPANDED_KEY_BYTES])
+{
+#if defined(__GNUC__) || defined(__clang__)
+    if (bignum_ctr_drbg_aes256_backend() != 0) {
+        bignum_ctr_drbg_aes256_expand_key_asm(key, expanded_key);
+        return;
+    }
+#endif
+    bignum_ctr_drbg_aes256_expand_key(key, expanded_key);
 }
 
 void bignum_ctr_drbg_aes256_encrypt_dispatch(

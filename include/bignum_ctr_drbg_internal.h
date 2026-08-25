@@ -18,6 +18,22 @@
 extern "C" {
 #endif
 
+/** @brief Independent AES-NI YASM key expansion leaf; requires AES-NI. */
+void bignum_ctr_drbg_aes256_expand_key_asm(
+    const uint8_t key[BIGNUM_CTR_DRBG_KEY_BYTES],
+    uint8_t expanded_key[BIGNUM_CTR_DRBG_EXPANDED_KEY_BYTES]);
+
+/** @brief Independent AES-NI YASM block encryption leaf; requires AES-NI. */
+void bignum_ctr_drbg_aes256_encrypt_expanded_asm(
+    const uint8_t expanded_key[BIGNUM_CTR_DRBG_EXPANDED_KEY_BYTES],
+    const uint8_t input[BIGNUM_CTR_DRBG_BLOCK_BYTES],
+    uint8_t output[BIGNUM_CTR_DRBG_BLOCK_BYTES]);
+
+/** @brief Expands a key through the runtime-selected internal backend. */
+void bignum_ctr_drbg_aes256_expand_key_dispatch(
+    const uint8_t key[BIGNUM_CTR_DRBG_KEY_BYTES],
+    uint8_t expanded_key[BIGNUM_CTR_DRBG_EXPANDED_KEY_BYTES]);
+
 /**
  * @brief Expands an AES-256 key into fifteen round keys.
  * @details The output contains 240 bytes in the FIPS 197 word order. The

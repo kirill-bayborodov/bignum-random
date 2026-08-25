@@ -14,12 +14,14 @@ int main(void)
     static const uint8_t expected[16] = {
         0xf3,0xee,0xd1,0xbd,0xb5,0xd2,0xa0,0x3c,0x06,0x4b,0x5a,0x7e,0x3d,0xb1,0x81,0xf8
     };
-    uint8_t expanded[240], c_output[16], asm_output[16];
+    uint8_t expanded[240], asm_expanded[240], c_output[16], asm_output[16];
     bignum_ctr_drbg_aes256_expand_key(key, expanded);
+    bignum_ctr_drbg_aes256_expand_key_asm(key, asm_expanded);
     bignum_ctr_drbg_aes256_encrypt_expanded(expanded, input, c_output);
-    extern void bignum_ctr_drbg_aes256_encrypt_expanded_asm(const uint8_t *, const uint8_t *, uint8_t *);
-    bignum_ctr_drbg_aes256_encrypt_expanded_asm(expanded, input, asm_output);
-    if (memcmp(c_output, expected, sizeof(expected)) != 0 || memcmp(asm_output, expected, sizeof(expected)) != 0) {
+    bignum_ctr_drbg_aes256_encrypt_expanded_asm(asm_expanded, input, asm_output);
+    if (memcmp(expanded, asm_expanded, sizeof(expanded)) != 0 ||
+        memcmp(c_output, expected, sizeof(expected)) != 0 ||
+        memcmp(asm_output, expected, sizeof(expected)) != 0) {
         fprintf(stderr, "AES-256 leaf KAT failed\n");
         return 1;
     }
