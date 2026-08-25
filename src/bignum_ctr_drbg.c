@@ -32,6 +32,15 @@ extern void bignum_ctr_drbg_update_asm(
     uint8_t key[BIGNUM_CTR_DRBG_KEY_BYTES],
     uint8_t v[BIGNUM_CTR_DRBG_BLOCK_BYTES]) BIGNUM_WEAK;
 
+extern void bignum_ctr_drbg_bcc_asm(
+    const uint8_t key[BIGNUM_CTR_DRBG_KEY_BYTES],
+    const uint8_t *data, size_t data_len,
+    uint8_t output[BIGNUM_CTR_DRBG_BLOCK_BYTES]) BIGNUM_WEAK;
+
+extern bignum_ctr_drbg_status_t bignum_ctr_drbg_block_cipher_df_asm(
+    const uint8_t *input, size_t input_len,
+    uint8_t output[BIGNUM_CTR_DRBG_SEED_BYTES]) BIGNUM_WEAK;
+
 #define AES_ROUNDS 14U
 #define AES_EXPANDED_KEY_BYTES 240U
 #define DRBG_RESEED_INTERVAL UINT64_C(281474976710656)
@@ -265,7 +274,23 @@ static void bcc(const uint8_t key[32], const uint8_t *data, size_t data_len, uin
     secure_zero(block, sizeof(block));
 }
 
-static bignum_ctr_drbg_status_t block_cipher_df(
+void bignum_ctr_drbg_bcc_dispatch(
+    const uint8_t key[BIGNUM_CTR_DRBG_KEY_BYTES], const uint8_t *data,
+    size_t data_len, uint8_t output[BIGNUM_CTR_DRBG_BLOCK_BYTES])
+{
+#if defined(__GNUC__) || defined(__clang__)
+    if (bignum_ctr_drbg_aes256_runtime_has_aesni() != 0 &&
+        bignum_ctr_drbg_aes256_expand_key_asm != 0 &&
+        bignum_ctr_drbg_aes256_encrypt_expanded_asm != 0 &&
+        bignum_ctr_drbg_bcc_asm != 0) {
+        bignum_ctr_drbg_bcc_asm(key, data, data_len, output);
+        return;
+    }
+#endif
+    bcc(key, data, data_len, output);
+}
+
+static bignum_ctr_drbg_status_t block_cipher_df_c(
     const uint8_t *input, size_t input_len, uint8_t output[48])
 {
     uint8_t s[4U + 4U + BIGNUM_CTR_DRBG_MAX_INPUT_BYTES + 16U];
@@ -289,7 +314,7 @@ static bignum_ctr_drbg_status_t block_cipher_df(
         memset(data, 0, 16U);
         store_be32(data, i);
         memcpy(data + 16U, s, s_len);
-        bcc(key, data, 16U + s_len, temp + temp_len);
+        bignum_ctr_drbg_bcc_dispatch(key, data, 16U + s_len, temp + temp_len);
         temp_len += 16U;
     }
     memcpy(key, temp, sizeof(key));
@@ -305,6 +330,23 @@ static bignum_ctr_drbg_status_t block_cipher_df(
     secure_zero(key, sizeof(key));
     secure_zero(x, sizeof(x));
     return BIGNUM_CTR_DRBG_SUCCESS;
+}
+
+/** @brief Runs Block_Cipher_df through the current complete backend. */
+bignum_ctr_drbg_status_t bignum_ctr_drbg_block_cipher_df_dispatch(
+    const uint8_t *input, size_t input_len,
+    uint8_t output[BIGNUM_CTR_DRBG_SEED_BYTES])
+{
+#if defined(__GNUC__) || defined(__clang__)
+    if (input_len <= BIGNUM_CTR_DRBG_MAX_INPUT_BYTES &&
+        (input_len == 0U || input != NULL) && output != NULL &&
+        bignum_ctr_drbg_aes256_runtime_has_aesni() != 0 &&
+        bignum_ctr_drbg_bcc_asm != 0 &&
+        bignum_ctr_drbg_block_cipher_df_asm != 0) {
+        return bignum_ctr_drbg_block_cipher_df_asm(input, input_len, output);
+    }
+#endif
+    return block_cipher_df_c(input, input_len, output);
 }
 
 static void ctr_drbg_update_c(const uint8_t provided_data[48], uint8_t key[32], uint8_t v[16])
@@ -358,7 +400,7 @@ static bignum_ctr_drbg_status_t make_seed(
     memcpy(input + entropy_len, nonce, nonce_len);
     if (personalization_len != 0U) memcpy(input + entropy_len + nonce_len, personalization, personalization_len);
     {
-        bignum_ctr_drbg_status_t status = block_cipher_df(input, total, seed);
+        bignum_ctr_drbg_status_t status = bignum_ctr_drbg_block_cipher_df_dispatch(input, total, seed);
         secure_zero(input, sizeof(input));
         return status;
     }
@@ -399,7 +441,7 @@ bignum_ctr_drbg_status_t bignum_ctr_drbg_reseed(
     }
     memcpy(input, entropy, entropy_len);
     if (additional_input_len != 0U) memcpy(input + entropy_len, additional_input, additional_input_len);
-    status = block_cipher_df(input, entropy_len + additional_input_len, seed);
+    status = bignum_ctr_drbg_block_cipher_df_dispatch(input, entropy_len + additional_input_len, seed);
     if (status == BIGNUM_CTR_DRBG_SUCCESS) {
         bignum_ctr_drbg_update_dispatch(seed, ctx->key, ctx->v);
         ctx->reseed_counter = 1U;
@@ -424,7 +466,7 @@ bignum_ctr_drbg_status_t bignum_ctr_drbg_generate(
         (additional_input_len != 0U && additional_input == NULL)) return BIGNUM_CTR_DRBG_ERROR_INPUT;
     if (ctx->reseed_counter > DRBG_RESEED_INTERVAL) return BIGNUM_CTR_DRBG_ERROR_RESEED_REQUIRED;
     candidate = *ctx;
-    if (additional_input_len != 0U) status = block_cipher_df(additional_input, additional_input_len, add_data);
+    if (additional_input_len != 0U) status = bignum_ctr_drbg_block_cipher_df_dispatch(additional_input, additional_input_len, add_data);
     if (status != BIGNUM_CTR_DRBG_SUCCESS) return status;
     if (additional_input_len != 0U) bignum_ctr_drbg_update_dispatch(add_data, candidate.key, candidate.v);
     for (offset = 0U; offset < out_len; offset += sizeof(block)) {

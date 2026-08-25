@@ -46,6 +46,28 @@ void bignum_ctr_drbg_update_dispatch(
     uint8_t key[BIGNUM_CTR_DRBG_KEY_BYTES],
     uint8_t v[BIGNUM_CTR_DRBG_BLOCK_BYTES]);
 
+/** @brief Independent YASM BCC leaf; requires AES-NI. */
+void bignum_ctr_drbg_bcc_asm(
+    const uint8_t key[BIGNUM_CTR_DRBG_KEY_BYTES],
+    const uint8_t *data, size_t data_len,
+    uint8_t output[BIGNUM_CTR_DRBG_BLOCK_BYTES]);
+
+/** @brief Runs BCC through the complete backend or C fallback. */
+void bignum_ctr_drbg_bcc_dispatch(
+    const uint8_t key[BIGNUM_CTR_DRBG_KEY_BYTES],
+    const uint8_t *data, size_t data_len,
+    uint8_t output[BIGNUM_CTR_DRBG_BLOCK_BYTES]);
+
+/** @brief Independent YASM Block_Cipher_df leaf; requires AES-NI. */
+bignum_ctr_drbg_status_t bignum_ctr_drbg_block_cipher_df_asm(
+    const uint8_t *input, size_t input_len,
+    uint8_t output[BIGNUM_CTR_DRBG_SEED_BYTES]);
+
+/** @brief Runs Block_Cipher_df through the complete backend or C fallback. */
+bignum_ctr_drbg_status_t bignum_ctr_drbg_block_cipher_df_dispatch(
+    const uint8_t *input, size_t input_len,
+    uint8_t output[BIGNUM_CTR_DRBG_SEED_BYTES]);
+
 /**
  * @brief Expands an AES-256 key into fifteen round keys.
  * @details The output contains 240 bytes in the FIPS 197 word order. The
