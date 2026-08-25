@@ -34,14 +34,14 @@ The microbenchmark is a leaf-level engineering comparison. It is not a DRBG serv
 
 The leaf must not be called merely because the host is x86-64. The final module requires a validated runtime feature-selection policy, a defined behavior on processors without AES-NI, an identical C/YASM test vector suite, ABI and object-link evidence for both protected build modes, and an assembly-side review of sensitive-state lifetime and zeroization. The expanded-key argument is currently public only to make the leaf boundary testable; the final Approved API should keep the AES schedule internal to the DRBG context and should not expose SSP-bearing buffers to consumers.
 
-The protected Makefile and CI workflow remain unchanged. Consequently, this leaf is currently a handoff artifact and is not part of the family-named production object selected by the existing build rules.
+The protected Makefile and CI workflow remain unchanged. Standalone C harnesses are kept under `tools/` rather than `tests/`, because the protected Makefile automatically treats every `tests/*.c` file as a production test target. Consequently, this leaf is currently a handoff artifact and is not part of the family-named production object selected by the existing build rules.
 
 ## Reproduction
 
 ```sh
 yasm -f elf64 src/bignum_ctr_drbg_aes256.asm -o /tmp/bignum-random-drbg-build/bignum_ctr_drbg_aes256.o
 gcc -std=c11 -Wall -Wextra -Werror -pedantic -O2 -Iinclude \
-  tests/test_ctr_drbg_aes_asm.c src/bignum_ctr_drbg.c \
+  tools/test_ctr_drbg_aes_asm.c src/bignum_ctr_drbg.c \
   /tmp/bignum-random-drbg-build/bignum_ctr_drbg_aes256.o \
   -o /tmp/bignum-random-drbg-build/test_ctr_drbg_aes_asm
 /tmp/bignum-random-drbg-build/test_ctr_drbg_aes_asm
