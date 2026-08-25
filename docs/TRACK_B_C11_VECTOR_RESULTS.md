@@ -16,6 +16,8 @@ The implementation is the repository's self-contained AES-256 CTR_DRBG candidate
 | Normal build | `-std=c11 -Wall -Wextra -Werror -pedantic` |
 | Sanitizer build | AddressSanitizer and UndefinedBehaviorSanitizer with frame pointers |
 | Sanitizer result | **PASS: 240/240 records** |
+| Negative-path harness | **PASS: strict argument/state/output-preservation/reseed-limit/zeroization checks** |
+| Negative-path sanitizer | **PASS** |
 
 ## Reproduction
 
@@ -48,6 +50,8 @@ LD_PRELOAD="$(gcc -print-file-name=libasan.so)" \
 ## Interpretation and remaining gate
 
 The result verifies the candidate AES implementation, BCC, Block_Cipher_df, counter increment, state update, and non-prediction-resistant CAVP-style state transitions for this suite. It does not establish the entropy-source claim, health-test behavior, fail-closed lifecycle, image-integrity mechanism, module boundary, assembly equivalence, or CAVP/CMVP status. The protected Makefile currently selects only the family-named production source, so the new context API remains a candidate reference translation unit until the packaging decision is implemented in both C11 and YASM production paths.
+
+The deterministic negative-path harness is `tests/test_ctr_drbg_candidate.c`. It verifies null and malformed inputs, preservation of an existing context after rejected instantiation, blocked use of an uninitialized context, output preservation on rejected generation, oversized additional input, reseed-limit transition, integrity-gated startup, fail-closed module error behavior, transition to `RESEED_REQUIRED`, repeated blocking before reseed, and zeroization of the DRBG SSP while retaining the `ZEROIZED` lifecycle marker. Both strict and ASan/UBSan builds pass.
 
 ## References
 
