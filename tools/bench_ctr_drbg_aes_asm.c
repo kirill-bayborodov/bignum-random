@@ -1,5 +1,5 @@
 #define _POSIX_C_SOURCE 200809L
-#include "bignum_ctr_drbg.h"
+#include "bignum_ctr_drbg_internal.h"
 #include <stdint.h>
 #include <stdio.h>
 #include <time.h>
