@@ -6,7 +6,7 @@
  * context. Entropy buffers are zeroized on every return path. A provider or
  * DRBG failure clears the DRBG state and latches the module in ERROR.
  */
-#include "bignum_ctr_drbg_context.h"
+#include "internal/bignum_ctr_drbg_context.h"
 
 #include <stddef.h>
 #include <string.h>

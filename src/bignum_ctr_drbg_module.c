@@ -1,4 +1,4 @@
-#include "bignum_ctr_drbg_context.h"
+#include "internal/bignum_ctr_drbg_module.h"
 
 #include <string.h>
 

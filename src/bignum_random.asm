@@ -21,7 +21,7 @@
 ; @return rax = bignum_random_status_t: 0 success; -1 null pointer; -2 empty
 ; range; -3 invalid length; -4 non-normalized bound; -5 entropy failure; -6
 ; aliased output and bound. The direction flag is cleared before `rep stosq`.
-; @version 1.0.0
+; @version 0.1.1
 
 section .text
 

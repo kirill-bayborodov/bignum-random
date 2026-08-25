@@ -2,8 +2,8 @@
  * @file bignum_ctr_drbg_service.c
  * @brief Controlled production-facing candidate service adapter.
  */
-#include "bignum_ctr_drbg_service.h"
-#include "bignum_ctr_drbg_os_entropy.h"
+#include "internal/bignum_ctr_drbg_service.h"
+#include "internal/bignum_ctr_drbg_os_entropy.h"
 
 bignum_ctr_drbg_status_t bignum_ctr_drbg_service_init(
     bignum_ctr_drbg_context_t *context)

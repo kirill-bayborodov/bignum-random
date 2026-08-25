@@ -18,7 +18,7 @@
  * access to an object that another thread writes still requires caller-side
  * synchronization.
  *
- * @version 1.0.0
+ * @version 0.1.1
  */
 #ifndef BIGNUM_RANDOM_H
 #define BIGNUM_RANDOM_H

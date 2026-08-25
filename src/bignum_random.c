@@ -13,7 +13,7 @@
  * documented error path is transactional. The C source deliberately prioritizes
  * explicit validation and readable correctness over the later YASM fast path.
  *
- * @version 1.0.0
+ * @version 0.1.1
  */
 #ifndef _GNU_SOURCE
 #define _GNU_SOURCE

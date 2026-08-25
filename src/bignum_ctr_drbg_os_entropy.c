@@ -3,7 +3,7 @@
  * @brief Stateless Linux getrandom(2) entropy-provider implementation.
  */
 #define _GNU_SOURCE
-#include "bignum_ctr_drbg_os_entropy.h"
+#include "internal/bignum_ctr_drbg_os_entropy.h"
 
 #include <errno.h>
 #include <sys/random.h>

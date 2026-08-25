@@ -9,7 +9,7 @@
  */
 #include "bignum_random.h"
 #ifdef BIGNUM_RANDOM_CTR_DRBG_VECTOR_TEST
-#include "bignum_ctr_drbg.h"
+#include "../src/internal/bignum_ctr_drbg.h"
 #endif
 
 #include <errno.h>

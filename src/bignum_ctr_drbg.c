@@ -7,7 +7,7 @@
  * optimized assembly implementation and does not by itself establish FIPS
  * validation.
  */
-#include "bignum_ctr_drbg_internal.h"
+#include "internal/bignum_ctr_drbg_internal.h"
 
 #include <string.h>
 #include <sys/random.h>
