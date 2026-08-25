@@ -1,6 +1,6 @@
 # Track B C11 DRBG Vector Results
 
-**Status:** Candidate C11 cryptographic leaf validated against the complete AES-256 CTR_DRBG `use df`, `PredictionResistance = False` record set available in the downloaded NIST CAVP-style RSP archive. This is engineering evidence only; it is not a CAVP certificate, CMVP validation, or FIPS approval.
+**Status:** Candidate C11 cryptographic leaf validated against the complete AES-256 CTR_DRBG `use df` record sets for both `PredictionResistance = False` and `PredictionResistance = True` available in the downloaded NIST CAVP-style RSP archives. This is engineering evidence only; it is not a CAVP certificate, CMVP validation, or FIPS approval.
 
 ## Candidate profile
 
@@ -8,14 +8,14 @@ The implementation is the repository's self-contained AES-256 CTR_DRBG candidate
 
 | Item | Result |
 |---|---|
-| Vector source | Official NIST CAVP DRBG informal vector archive, `drbgvectors_pr_false.zip` |
+| Vector source | Official NIST CAVP DRBG informal vector archives, `drbgvectors_pr_false.zip` and `drbgvectors_pr_true.zip` |
 | Selected algorithm suite | `AES-256 use df` |
-| Prediction resistance | False |
-| Records exercised | 240 |
+| Prediction resistance | False and True |
+| Records exercised | 240 per mode; 480 total |
 | Flow per record | Instantiate; optional reseed; two generate calls; compare 512 returned bits |
 | Normal build | `-std=c11 -Wall -Wextra -Werror -pedantic` |
 | Sanitizer build | AddressSanitizer and UndefinedBehaviorSanitizer with frame pointers |
-| Sanitizer result | **PASS: 240/240 records** |
+| Sanitizer result | **PASS: 240/240 records per mode** |
 | Negative-path harness | **PASS: strict argument/state/output-preservation/reseed-limit/zeroization checks** |
 | Negative-path sanitizer | **PASS** |
 
@@ -30,6 +30,9 @@ gcc -std=c11 -Wall -Wextra -Werror -pedantic -fPIC -shared \
 python3 tests/run_ctr_drbg_vectors.py \
   /tmp/bignum-random-drbg-build/libbignum_ctr_drbg.so \
   tests/vectors/nist/ctr_drbg_pr_false.rsp
+python3 tests/run_ctr_drbg_vectors.py \
+  /tmp/bignum-random-drbg-build/libbignum_ctr_drbg.so \
+  tests/vectors/nist/ctr_drbg_pr_true.rsp
 ```
 
 The sanitizer command is:
@@ -49,7 +52,7 @@ LD_PRELOAD="$(gcc -print-file-name=libasan.so)" \
 
 ## Interpretation and remaining gate
 
-The result verifies the candidate AES implementation, BCC, Block_Cipher_df, counter increment, state update, and non-prediction-resistant CAVP-style state transitions for this suite. It does not establish the entropy-source claim, health-test behavior, fail-closed lifecycle, image-integrity mechanism, module boundary, assembly equivalence, or CAVP/CMVP status. The protected Makefile currently selects only the family-named production source, so the new context API remains a candidate reference translation unit until the packaging decision is implemented in both C11 and YASM production paths.
+The result verifies the candidate AES implementation, BCC, Block_Cipher_df, counter increment, state update, non-prediction-resistant state transitions, and the prediction-resistance flow in which NIST 9.3.1 passes AdditionalInput into Reseed_function and clears it before Generate_algorithm. It does not establish the entropy-source claim, health-test behavior, fail-closed lifecycle, image-integrity mechanism, module boundary, assembly equivalence, or CAVP/CMVP status. The protected Makefile currently selects only the family-named production source, so the new context API remains a candidate reference translation unit until the packaging decision is implemented in both C11 and YASM production paths.
 
 The deterministic negative-path harness is `tools/test_ctr_drbg_candidate.c`. It verifies null and malformed inputs, preservation of an existing context after rejected instantiation, blocked use of an uninitialized context, output preservation on rejected generation, oversized additional input, reseed-limit transition, integrity-gated startup, fail-closed module error behavior, transition to `RESEED_REQUIRED`, repeated blocking before reseed, and zeroization of the DRBG SSP while retaining the `ZEROIZED` lifecycle marker. Both strict and ASan/UBSan builds pass. The harness is kept under `tools/` because the protected Makefile automatically treats every `tests/*.c` file as a production test target.
 

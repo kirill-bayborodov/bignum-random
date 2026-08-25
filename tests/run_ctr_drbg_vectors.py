@@ -80,23 +80,32 @@ def main() -> int:
         if len(entropy) != 32 or len(nonce) != 16:
             raise RuntimeError(f"bad parsed lengths COUNT={case.get('COUNT', ['?'])[0]} entropy={len(entropy)} nonce={len(nonce)} keys={sorted(case)}")
         call(lib, "bignum_ctr_drbg_instantiate", ctypes.byref(ctx), cbuf(entropy), len(entropy), cbuf(nonce), len(nonce), cbuf(personalization), len(personalization))
-        if "EntropyInputReseed" in case:
-            reseed_entropy = unhex(case, "EntropyInputReseed")
-            reseed_additional = unhex(case, "AdditionalInputReseed")
-            call(lib, "bignum_ctr_drbg_reseed", ctypes.byref(ctx), cbuf(reseed_entropy), len(reseed_entropy), cbuf(reseed_additional), len(reseed_additional))
         additions = case.get("AdditionalInput", [""])
         while len(additions) < 2:
             additions.append("")
         output = (ctypes.c_uint8 * 64)()
-        for addition in additions[:2]:
-            extra = bytes.fromhex(addition) if addition else b""
-            call(lib, "bignum_ctr_drbg_generate", ctypes.byref(ctx), output, 64, cbuf(extra), len(extra))
+        if "EntropyInputPR" in case:
+            pr_entropy = case["EntropyInputPR"]
+            for index in range(2):
+                entropy_pr = bytes.fromhex(pr_entropy[index])
+                extra = bytes.fromhex(additions[index]) if additions[index] else b""
+                call(lib, "bignum_ctr_drbg_reseed", ctypes.byref(ctx), cbuf(entropy_pr), len(entropy_pr), cbuf(extra), len(extra))
+                call(lib, "bignum_ctr_drbg_generate", ctypes.byref(ctx), output, 64, None, 0)
+        else:
+            if "EntropyInputReseed" in case:
+                reseed_entropy = unhex(case, "EntropyInputReseed")
+                reseed_additional = unhex(case, "AdditionalInputReseed")
+                call(lib, "bignum_ctr_drbg_reseed", ctypes.byref(ctx), cbuf(reseed_entropy), len(reseed_entropy), cbuf(reseed_additional), len(reseed_additional))
+            for addition in additions[:2]:
+                extra = bytes.fromhex(addition) if addition else b""
+                call(lib, "bignum_ctr_drbg_generate", ctypes.byref(ctx), output, 64, cbuf(extra), len(extra))
         expected = bytes.fromhex(case["ReturnedBits"][0])
         got = bytes(output)
         if got != expected:
             raise AssertionError(f"COUNT {case.get('COUNT', ['?'])[0]} mismatch: {got.hex()} != {expected.hex()}")
         passed += 1
-    print(f"AES-256 use-df PR=false vectors: PASS ({passed} cases)")
+    mode = "PR=true" if "EntropyInputPR" in cases[0] else "PR=false"
+    print(f"AES-256 use-df {mode} vectors: PASS ({passed} cases)")
     return 0
 
 
