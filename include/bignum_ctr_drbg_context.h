@@ -11,6 +11,15 @@
 
 #include "bignum_ctr_drbg_module.h"
 
+/** Candidate continuous-health window; freeze only after entropy assessment. */
+#define BIGNUM_CTR_DRBG_HEALTH_WINDOW_BYTES 64U
+/** Candidate RCT consecutive-repeat cutoff; an assessment must justify it. */
+#define BIGNUM_CTR_DRBG_HEALTH_RCT_CUTOFF 32U
+/** Candidate APT per-byte count cutoff within one health window. */
+#define BIGNUM_CTR_DRBG_HEALTH_APT_CUTOFF 16U
+/** Private health state bytes kept inside opaque context storage. */
+#define BIGNUM_CTR_DRBG_HEALTH_STATE_BYTES 520U
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -26,7 +35,9 @@ extern "C" {
  * the duration of the callback; valid for exactly `out_len` bytes.
  * @param out_len [in] Always `BIGNUM_CTR_DRBG_KEY_BYTES` for this API.
  * @return `BIGNUM_CTR_DRBG_SUCCESS` only when every output byte was written;
- * otherwise a failure status and the context enters ERROR.
+ * otherwise a failure status and the context enters ERROR. A successful
+ * result is additionally checked by candidate byte-symbol RCT/APT continuous
+ * health tests; a health failure returns `BIGNUM_CTR_DRBG_ERROR_ENTROPY_HEALTH`.
  * @thread_safety The provider defines its own concurrency contract; this
  * callback is not invoked concurrently for one context.
  */
@@ -42,7 +53,7 @@ typedef bignum_ctr_drbg_status_t (*bignum_ctr_drbg_entropy_provider_fn)(
  */
 typedef struct bignum_ctr_drbg_context {
     max_align_t alignment; /**< Alignment anchor; caller must preserve object alignment. */
-    unsigned char storage[sizeof(bignum_ctr_drbg_module_ctx)]; /**< Private lifecycle and DRBG storage; implementation-owned after init. */
+    unsigned char storage[sizeof(bignum_ctr_drbg_module_ctx) + BIGNUM_CTR_DRBG_HEALTH_STATE_BYTES]; /**< Private lifecycle, DRBG and health-test storage; implementation-owned after init. */
     uint64_t cookie; /**< Initialization marker; callers must not inspect or modify it. */
     uint64_t owner_process_id; /**< Creator process identifier; forked copies are fail-closed. */
 } bignum_ctr_drbg_context_t;

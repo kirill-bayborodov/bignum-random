@@ -18,6 +18,7 @@
 | Caller context fault injection | Strict and ASan/UBSan harness | **PASS** |
 | Caller context concurrent isolation | 4 pthread workers, independent contexts/providers | **PASS** |
 | Caller context fork isolation | Parent/child inherited-context rejection | **PASS**, including ASan/UBSan child run |
+| Entropy RCT/APT health faults | Constant-symbol RCT and 64-byte-window APT injection | **PASS**, strict and ASan/UBSan |
 
 The protected `Makefile` and `.github/workflows/ci.yml` were not modified. Candidate-specific harnesses remain under `tools/` because the protected Makefile treats every `tests/*.c` file as a production test target.
 
@@ -61,4 +62,4 @@ gcc -std=c11 -Wall -Wextra -Werror -pedantic -Iinclude \
 
 ## Remaining gates
 
-Coverage is evidence for review and does not substitute for CSTL/CAVP/CMVP testing. The concurrency and fork behavior stage is now covered by deterministic harnesses. The next implementation stage is an explicit entropy-provider health-test policy and fault-injection coverage for provider health failures, short or malformed completion, and exact image-integrity behavior.
+Coverage is evidence for review and does not substitute for CSTL/CAVP/CMVP testing. The concurrency and fork behavior stage is now covered by deterministic harnesses. The candidate now also applies private byte-symbol RCT/APT-like continuous checks before entropy enters the DRBG. The thresholds remain engineering candidates pending entropy-source assessment and CSTL review; they are not a validation claim.

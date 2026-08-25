@@ -27,8 +27,12 @@ static bignum_ctr_drbg_status_t provider_callback(
         return BIGNUM_CTR_DRBG_ERROR_INPUT;
     }
     provider->calls++;
-    memset(out, provider->fill, out_len);
-    return provider->fail ? BIGNUM_CTR_DRBG_ERROR_INPUT : BIGNUM_CTR_DRBG_SUCCESS;
+    if (provider->fail != 0) {
+        memset(out, provider->fill, out_len / 2U);
+        return BIGNUM_CTR_DRBG_ERROR_INPUT;
+    }
+    for (size_t i = 0U; i < out_len; ++i) out[i] = (uint8_t)(provider->fill + i);
+    return BIGNUM_CTR_DRBG_SUCCESS;
 }
 
 #define CHECK(condition) do { \
