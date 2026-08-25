@@ -86,18 +86,18 @@ static uint32_t aes_rcon(unsigned int round)
     return (uint32_t)value << 24U;
 }
 
-static void aes_expand_key(const uint8_t key[32], uint8_t expanded[240])
+void bignum_ctr_drbg_aes256_expand_key(const uint8_t key[32], uint8_t expanded_key[240])
 {
     unsigned int i;
     for (i = 0U; i < 8U; ++i) {
-        memcpy(expanded + 4U * i, key + 4U * i, 4U);
+        memcpy(expanded_key + 4U * i, key + 4U * i, 4U);
     }
     for (i = 8U; i < 60U; ++i) {
-        uint32_t word = load_be32(expanded + 4U * (i - 1U));
+        uint32_t word = load_be32(expanded_key + 4U * (i - 1U));
         if ((i % 8U) == 0U) word = aes_sub_word(aes_rot_word(word)) ^ aes_rcon(i / 8U);
         else if ((i % 8U) == 4U) word = aes_sub_word(word);
-        word ^= load_be32(expanded + 4U * (i - 8U));
-        store_be32(expanded + 4U * i, word);
+        word ^= load_be32(expanded_key + 4U * (i - 8U));
+        store_be32(expanded_key + 4U * i, word);
     }
 }
 
@@ -138,26 +138,33 @@ static void aes_mix_columns(uint8_t state[16])
     }
 }
 
-static void aes_encrypt_block(const uint8_t key[32], const uint8_t input[16], uint8_t output[16])
+static void secure_zero(void *memory, size_t length);
+
+void bignum_ctr_drbg_aes256_encrypt_expanded(const uint8_t expanded_key[240], const uint8_t input[16], uint8_t output[16])
 {
-    uint8_t expanded[AES_EXPANDED_KEY_BYTES];
     uint8_t state[16];
     unsigned int round;
-    aes_expand_key(key, expanded);
     memcpy(state, input, sizeof(state));
-    aes_add_round_key(state, expanded);
+    aes_add_round_key(state, expanded_key);
     for (round = 1U; round < AES_ROUNDS; ++round) {
         aes_sub_bytes(state);
         aes_shift_rows(state);
         aes_mix_columns(state);
-        aes_add_round_key(state, expanded + 16U * round);
+        aes_add_round_key(state, expanded_key + 16U * round);
     }
     aes_sub_bytes(state);
     aes_shift_rows(state);
-    aes_add_round_key(state, expanded + 16U * AES_ROUNDS);
+    aes_add_round_key(state, expanded_key + 16U * AES_ROUNDS);
     memcpy(output, state, sizeof(state));
-    memset(expanded, 0, sizeof(expanded));
     memset(state, 0, sizeof(state));
+}
+
+static void aes_encrypt_block(const uint8_t key[32], const uint8_t input[16], uint8_t output[16])
+{
+    uint8_t expanded[AES_EXPANDED_KEY_BYTES];
+    bignum_ctr_drbg_aes256_expand_key(key, expanded);
+    bignum_ctr_drbg_aes256_encrypt_expanded(expanded, input, output);
+    secure_zero(expanded, sizeof(expanded));
 }
 
 static void secure_zero(void *memory, size_t length)
