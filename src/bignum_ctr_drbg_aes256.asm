@@ -25,6 +25,9 @@ EXTERN bignum_ctr_drbg_zeroization_probe
 %ifdef BIGNUM_DRBG_DF_SNAPSHOT
 EXTERN bignum_ctr_drbg_df_snapshot
 %endif
+%ifdef BIGNUM_DRBG_SECRET_ZEROIZE_PROBE
+EXTERN bignum_ctr_drbg_secret_zeroization_probe
+%endif
 
 SECTION .text
 
@@ -218,6 +221,12 @@ bignum_ctr_drbg_bcc_asm:
     lea         rdi, [rsp]
     mov         ecx, 40
     rep stosq
+%ifdef BIGNUM_DRBG_SECRET_ZEROIZE_PROBE
+    lea         rdi, [rsp]
+    mov         rsi, 320
+    mov         edx, 1
+    call        bignum_ctr_drbg_secret_zeroization_probe
+%endif
     add         rsp, 320
     pop         r15
     pop         r14
@@ -377,6 +386,12 @@ bignum_ctr_drbg_block_cipher_df_asm:
     lea         rdi, [rsp]
     mov         ecx, 305
     rep stosq
+%ifdef BIGNUM_DRBG_SECRET_ZEROIZE_PROBE
+    lea         rdi, [rsp]
+    mov         rsi, 2440
+    mov         edx, 2
+    call        bignum_ctr_drbg_secret_zeroization_probe
+%endif
     add         rsp, 2440
     pop         rbx
     pop         r15

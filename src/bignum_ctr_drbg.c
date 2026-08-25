@@ -340,7 +340,7 @@ bignum_ctr_drbg_status_t bignum_ctr_drbg_block_cipher_df_dispatch(
     if (output == NULL) return BIGNUM_CTR_DRBG_ERROR_NULL_ARG;
 #if defined(__GNUC__) || defined(__clang__)
     if (input_len <= BIGNUM_CTR_DRBG_MAX_INPUT_BYTES &&
-        (input_len == 0U || input != NULL) && output != NULL &&
+        (input_len == 0U || input != NULL) &&
         bignum_ctr_drbg_aes256_runtime_has_aesni() != 0 &&
         bignum_ctr_drbg_bcc_asm != 0 &&
         bignum_ctr_drbg_block_cipher_df_asm != 0) {
