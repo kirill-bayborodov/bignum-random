@@ -7,13 +7,16 @@
 ; bounds before it invokes the Linux x86-64 `getrandom` syscall (number 318).
 ;
 ; The function saves rbx, r12, r13, r14 and r15, allocates an aligned stack
-; candidate record (32 words plus length), and makes no ABI-level C calls. `syscall` clobbers rax, rcx
-; and r11; persistent output/bound/length/mask state therefore resides only in
-; callee-saved registers. It retries a syscall interrupted with -EINTR and
-; fills a partial read before using the candidate. The most-significant word is
-; masked to `bit_length(bound)` and candidates >= bound are rejected. Output is
-; zeroed and written only after an accepted candidate is normalized, preserving
-; the complete output object on every named error return.
+; candidate record (32 words plus length), and makes no ABI-level C calls.
+; `syscall` clobbers rax, rcx and r11; persistent output/bound/length/mask state
+; therefore resides only in callee-saved registers. A Linux `getpid` syscall
+; invalidates the per-thread entropy cache after fork; cache refill retries an
+; interrupted `getrandom` and completes a short read before candidate use. The
+; most-significant word is masked to `bit_length(bound)` and candidates >= bound
+; are rejected. A one-word fast path avoids full temporary initialization. A
+; full-capacity direct-syscall path avoids cache bookkeeping because its 256-byte
+; request consumes an entire cache refill. Output is written only after
+; acceptance, preserving the complete output object on every named error return.
 ;
 ; @return rax = bignum_random_status_t: 0 success; -1 null pointer; -2 empty
 ; range; -3 invalid length; -4 non-normalized bound; -5 entropy failure; -6
@@ -27,8 +30,11 @@ BIGNUM_WORD_BYTES    equ 8
 BIGNUM_LEN_OFFSET    equ BIGNUM_CAPACITY * BIGNUM_WORD_BYTES
 BIGNUM_RECORD_QWORDS equ BIGNUM_CAPACITY + 1
 BIGNUM_STACK_BYTES   equ 272
+SYS_GETPID           equ 39
 SYS_GETRANDOM        equ 318
 ERRNO_EINTR          equ 4
+TLS_CACHE_WORDS      equ BIGNUM_CAPACITY
+TLS_CACHE_BYTES      equ TLS_CACHE_WORDS * BIGNUM_WORD_BYTES
 
 STATUS_SUCCESS        equ 0
 STATUS_NULL_ARG       equ -1
@@ -66,6 +72,7 @@ bignum_random:
     push    r14
     push    r15
     sub     rsp, BIGNUM_STACK_BYTES
+    cld                             ; System V requires DF clear on return; no path sets it.
 
     mov     r12, rdi                 ; persistent output pointer
     mov     r13, rsi                 ; persistent upper-bound pointer
@@ -88,43 +95,119 @@ bignum_random:
     mov     r15, 1
     shl     r15, cl
     dec     r15
-    jmp     .candidate_attempt
+    jmp     .select_candidate_path
 
 .full_top_mask:
     mov     r15, -1
 
+.select_candidate_path:
+    ; A one-word candidate needs only its stack word until acceptance. A
+    ; full-capacity candidate bypasses cache bookkeeping and receives all words
+    ; directly from getrandom. Intermediate lengths keep the generic zeroed
+    ; record because their inactive words are committed to public output.
+    cmp     r14, 1
+    je      .candidate_attempt_one
+    cmp     r14, BIGNUM_CAPACITY
+    je      .candidate_attempt_full
+    jmp     .candidate_attempt
+
 .candidate_attempt:
-    ; Clear the complete stack record before every entropy request. The accepted
-    ; record can then be committed with one fixed-size REP MOVSQ, matching the
-    ; efficient C11 struct-assignment shape and guaranteeing zero inactive words.
+    ; Generic lengths require a zero inactive tail for the fixed-size publish.
     mov     rdi, rsp
     xor     eax, eax
     mov     ecx, BIGNUM_RECORD_QWORDS
-    cld
     rep stosq
+    jmp     .entropy_prepare
 
-    ; Fill exactly active_words * 8 bytes. A short successful syscall advances
-    ; the buffer, while -EINTR is retried before the candidate is inspected.
-    mov     r8, r14
-    shl     r8, 3
+.candidate_attempt_one:
+    ; The accepted one-word path clears caller output only after comparison.
+    ; Before acceptance, the candidate stack word is the only writable state.
+    jmp     .entropy_prepare
+
+.candidate_attempt_full:
+    ; A 32-word direct read overwrites the complete word region. `len` is set
+    ; only after acceptance, so its prior stack contents are never read.
+    mov     r8, TLS_CACHE_BYTES
     mov     r9, rsp
+    jmp     .entropy_direct_fill
 
-.entropy_fill:
+.entropy_prepare:
+    ; Cache state is per ELF thread. A post-fork child inherits parent memory,
+    ; so compare a fresh PID on every public call and discard inherited bytes.
+    ; getpid cannot report an application-visible error on Linux x86-64.
+    mov     eax, SYS_GETPID
+    syscall
+    cmp     rax, [fs:tls_cache_pid wrt ..tpoff]
+    je      .entropy_consume_begin
+    mov     [fs:tls_cache_pid wrt ..tpoff], rax
+    mov     qword [fs:tls_cache_available wrt ..tpoff], 0
+
+.entropy_consume_begin:
+    mov     r8, r14                  ; words still required by this candidate
+    xor     r9d, r9d                 ; destination word index in stack record
+
+.entropy_consume:
+    test    r8, r8
+    jz      .candidate_ready
+    mov     rcx, [fs:tls_cache_available wrt ..tpoff]
+    test    rcx, rcx
+    jz      .cache_refill_start
+    mov     rax, [fs:tls_cache_index wrt ..tpoff]
+    mov     rdx, [fs:tls_entropy_words + rax * BIGNUM_WORD_BYTES wrt ..tpoff]
+    mov     [rsp + r9 * BIGNUM_WORD_BYTES], rdx
+    inc     rax
+    dec     rcx
+    mov     [fs:tls_cache_index wrt ..tpoff], rax
+    mov     [fs:tls_cache_available wrt ..tpoff], rcx
+    inc     r9
+    dec     r8
+    jmp     .entropy_consume
+
+.cache_refill_start:
+    ; Local-exec TLS gives this executable a fixed negative TPOFF. FS:0 is the
+    ; current thread pointer; adding the relocated offset forms a writable cache
+    ; address without any C call or shared global pointer.
+    mov     rdi, [fs:0]
+    add     rdi, tls_entropy_words wrt ..tpoff
+    mov     rsi, TLS_CACHE_BYTES
+
+.cache_refill:
     mov     eax, SYS_GETRANDOM
-    mov     rdi, r9
-    mov     rsi, r8
     xor     edx, edx                 ; flags = 0 selects initialized urandom
     syscall
     test    rax, rax
-    jg      .entropy_progress
+    jg      .cache_refill_progress
     cmp     rax, -ERRNO_EINTR
-    je      .entropy_fill
+    je      .cache_refill
     jmp     .error_entropy
 
-.entropy_progress:
+.cache_refill_progress:
+    add     rdi, rax
+    sub     rsi, rax
+    jnz     .cache_refill
+    mov     qword [fs:tls_cache_index wrt ..tpoff], 0
+    mov     qword [fs:tls_cache_available wrt ..tpoff], TLS_CACHE_WORDS
+    jmp     .entropy_consume
+
+.entropy_direct_fill:
+    ; Full-capacity calls have no cache amortization opportunity. Retain the
+    ; robust direct fill loop so EINTR and short reads preserve the public status
+    ; contract without paying PID/TLS bookkeeping on every 256-byte request.
+    mov     eax, SYS_GETRANDOM
+    mov     rdi, r9
+    mov     rsi, r8
+    xor     edx, edx
+    syscall
+    test    rax, rax
+    jg      .entropy_direct_progress
+    cmp     rax, -ERRNO_EINTR
+    je      .entropy_direct_fill
+    jmp     .error_entropy
+
+.entropy_direct_progress:
     add     r9, rax
     sub     r8, rax
-    jnz     .entropy_fill
+    jnz     .entropy_direct_fill
 
 .candidate_ready:
     ; Constrain the sample to the bound bit width before numeric comparison.
@@ -146,6 +229,11 @@ bignum_random:
     jmp     .candidate_attempt
 
 .candidate_accepted:
+    ; The one-word path normalizes and publishes directly; generic and full
+    ; paths retain the bounded high-to-low normalization loop.
+    cmp     r14, 1
+    je      .publish_one_word
+
     ; Normalize candidate length without reading inactive or uninitialized data.
     mov     rbx, r14
 .normalize_candidate:
@@ -164,8 +252,23 @@ bignum_random:
     mov     rsi, rsp
     mov     rdi, r12
     mov     ecx, BIGNUM_RECORD_QWORDS
-    cld
     rep movsq
+    jmp     .publish_length
+
+.publish_one_word:
+    ; Commit only after an accepted one-word sample. Clearing the complete
+    ; caller record establishes the zero tail; the sampled word and normalized
+    ; length are then stored without a generic stack-record copy.
+    mov     rdx, [rsp]
+    mov     rdi, r12
+    xor     eax, eax
+    mov     ecx, BIGNUM_RECORD_QWORDS
+    rep stosq
+    mov     [r12], rdx
+    test    rdx, rdx
+    setne   al
+    movzx   rax, al
+    mov     [r12 + BIGNUM_LEN_OFFSET], rax
 
 .publish_length:
     mov     eax, STATUS_SUCCESS
@@ -202,5 +305,16 @@ bignum_random:
 .error_alias:
     mov     eax, STATUS_ALIAS
     ret
+
+section .tbss nobits alloc write tls align=8
+; @brief Per-thread raw entropy cache used only by the YASM production path.
+; @details Each ELF thread owns an independent 32-word cache. `tls_cache_pid`
+; invalidates inherited cache bytes after fork, while index and available count
+; describe the unread suffix. The cache is refilled solely with Linux
+; `getrandom(2)` output and no caller pointer or output object is retained.
+tls_entropy_words:   resq TLS_CACHE_WORDS
+tls_cache_index:     resq 1
+tls_cache_available: resq 1
+tls_cache_pid:       resq 1
 
 section .note.GNU-stack noalloc noexec nowrite progbits

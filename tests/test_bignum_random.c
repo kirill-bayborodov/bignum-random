@@ -9,9 +9,13 @@
  */
 #include "bignum_random.h"
 
+#include <errno.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
+#include <sys/types.h>
+#include <sys/wait.h>
+#include <unistd.h>
 
 /**
  * @brief Initializes a normalized bignum from a little-endian word sequence.
@@ -162,6 +166,47 @@ static int test_representative_ranges(void)
 }
 
 /**
+ * @brief Verifies successful child sampling after a parent has filled the ASM cache.
+ * @details The parent first samples below three to create reusable entropy state.
+ * A child created with `fork()` then performs an independent public call. The
+ * child exits successfully only for `BIGNUM_RANDOM_SUCCESS` and a valid strict
+ * range result; the parent waits through EINTR and validates the child status.
+ * This is a public behavioral test, while syscall tracing separately confirms
+ * that the child cache invalidation path obtains fresh kernel entropy.
+ * @return One when parent prefill and child post-fork sampling both satisfy the
+ * public contract, otherwise zero.
+ */
+static int test_fork_child_sampling(void)
+{
+    const uint64_t three[] = { UINT64_C(3) };
+    bignum_t bound;
+    bignum_t parent_output;
+    pid_t child;
+    pid_t waited;
+    int wait_status;
+
+    set_value(&bound, three, 1U);
+    if (bignum_random(&parent_output, &bound) != BIGNUM_RANDOM_SUCCESS ||
+        !is_valid_sample(&parent_output, &bound)) return 0;
+
+    child = fork();
+    if (child < 0) return 0;
+    if (child == 0) {
+        bignum_t child_output;
+        const int valid = bignum_random(&child_output, &bound) == BIGNUM_RANDOM_SUCCESS &&
+                          is_valid_sample(&child_output, &bound);
+
+        _exit(valid ? 0 : 1);
+    }
+
+    do {
+        waited = waitpid(child, &wait_status, 0);
+    } while (waited < 0 && errno == EINTR);
+
+    return waited == child && WIFEXITED(wait_status) && WEXITSTATUS(wait_status) == 0;
+}
+
+/**
  * @brief Runs all deterministic public-contract scenarios.
  * @details Each line identifies the exact scenario so a CI failure exposes the
  * violated API invariant without relying on a non-reproducible sampled value.
@@ -178,6 +223,8 @@ int main(void)
     else { printf("test_singleton_range: FAILED\n"); ++failed; }
     if (test_representative_ranges()) printf("test_representative_ranges: PASSED\n");
     else { printf("test_representative_ranges: FAILED\n"); ++failed; }
+    if (test_fork_child_sampling()) printf("test_fork_child_sampling: PASSED\n");
+    else { printf("test_fork_child_sampling: FAILED\n"); ++failed; }
     printf("--- Deterministic bignum_random tests: %s ---\n", failed == 0 ? "PASSED" : "FAILED");
     return failed == 0 ? 0 : 1;
 }

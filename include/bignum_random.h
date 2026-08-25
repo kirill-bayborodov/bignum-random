@@ -5,8 +5,11 @@
  * the half-open interval `[0, upper_bound)`. It uses the Linux `getrandom(2)`
  * urandom source and rejection sampling rather than a remainder reduction, so
  * a non-power-of-two bound does not introduce modulo bias. The API owns no
- * memory, does not retain entropy bytes, and modifies the
- * caller-owned output only after a valid sample has been produced.
+ * caller memory and modifies the caller-owned output only after a valid sample
+ * has been produced. The C11 reference retains no entropy bytes. The x86-64
+ * YASM path may retain unused raw `getrandom(2)` bytes in ELF thread-local
+ * storage to amortize future syscalls; they are never shared across threads and
+ * are discarded when the process identifier changes after `fork()`.
  *
  * The implementation targets Linux on x86-64. The `upper_bound` input must use
  * the normalized fixed-capacity representation defined by `bignum.h`: zero has
@@ -42,18 +45,21 @@ typedef enum bignum_random_status {
     BIGNUM_RANDOM_ERROR_RANGE = -2, /**< `upper_bound` represents zero; the interval is empty and `*out` is unchanged. */
     BIGNUM_RANDOM_ERROR_LENGTH = -3, /**< `upper_bound->len` exceeds fixed capacity; `*out` is unchanged. */
     BIGNUM_RANDOM_ERROR_NORMALIZATION = -4, /**< A nonzero bound has a zero most-significant word; `*out` is unchanged. */
-    BIGNUM_RANDOM_ERROR_ENTROPY = -5, /**< Linux `getrandom(2)` could not fill a candidate; `*out` is unchanged and the call may be retried. */
+    BIGNUM_RANDOM_ERROR_ENTROPY = -5, /**< Linux `getrandom(2)` could not refill required entropy; `*out` is unchanged and the call may be retried. */
     BIGNUM_RANDOM_ERROR_ALIAS = -6 /**< `out` aliases `upper_bound`; both records are unchanged. */
 } bignum_random_status_t;
 
 /**
  * @brief Samples a cryptographically random unsigned bignum in `[0, upper_bound)`.
  * @details The function validates the bound before obtaining entropy. It derives
- * the bit length of the normalized upper bound, requests exactly enough random
+ * the bit length of the normalized upper bound, obtains exactly enough random
  * bytes from Linux `getrandom(2)`, masks unused high bits, and rejects any
  * candidate not strictly smaller than `upper_bound`. Repeating those steps until
  * acceptance gives every value in the requested interval the same probability.
  * Candidate storage is automatic and is copied to `*out` only after acceptance.
+ * The YASM implementation may consume already obtained bytes from its current
+ * thread's private cache; it refills that cache exclusively through `getrandom`
+ * and invalidates it after a process-ID change.
  *
  * @param[out] out Caller-owned writable destination. It must point to one live
  * `bignum_t`; it may not alias `upper_bound`. The function writes a normalized
@@ -74,11 +80,13 @@ typedef enum bignum_random_status {
  * @warning The call may block before Linux initializes its urandom source.
  * Rejection sampling has data-dependent iteration count and must not be used
  * where that timing is itself secret-sensitive.
- * @thread_safety Reentrant and safe for independent concurrent calls; no
- * mutable global state, file descriptor, or heap allocation is used.
+ * @thread_safety Reentrant and safe for independent concurrent calls. The C11
+ * path uses no mutable state. The YASM path has mutable ELF thread-local cache
+ * state only; it has no shared global state, file descriptor, or heap allocation.
  * @complexity O(BIGNUM_CAPACITY) time and O(BIGNUM_CAPACITY) automatic space
- * per candidate; expected candidate count is below two for the selected bit
- * length and any positive bound.
+ * per candidate. The YASM cache refill is O(BIGNUM_CAPACITY) bytes and is
+ * amortized across later calls; expected candidate count is below two for any
+ * positive bound at the selected bit length.
  */
 bignum_random_status_t bignum_random(bignum_t *out, const bignum_t *upper_bound);
 
