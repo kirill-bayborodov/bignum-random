@@ -25,17 +25,15 @@ The inline DF candidate was assessed as a replacement for the current expanded-k
 
 ### Finding F-01: Inner Generate Error Cleanup Is Not Structured
 
-In `bignum_ctr_drbg_generate`, the additional-input DF call has an immediate `return status` when it fails. The function has already allocated `candidate`, `add_data`, and `block` on the stack, but the cleanup statements occur only after the success path. The outer module correctly latches `ERROR` for a non-reseed failure, but this does not erase the inner function's temporary buffers before return.
+**Status: Closed.** `bignum_ctr_drbg_generate` now initializes its temporary objects and routes validation failures, reseed-limit returns, DF failures, and the normal success path through one `cleanup` label. The label clears `candidate`, `add_data`, and `block` before returning the preserved status. The outer module continues to latch `ERROR` for non-reseed failures, while output and state commit remain success-only operations.
 
-The current public validation makes this branch difficult to reach through ordinary malformed input because the C dispatcher rejects invalid additional-input lengths and pointers before DF selection. It remains reachable through a backend fault, a future DF implementation defect, or a deliberately injected test seam. For a FIPS-oriented fail-closed design, cleanup must not depend on the DF returning success.
-
-**Severity:** High for activation readiness. **Status:** Open. **Required action:** Replace the immediate return with a single cleanup label that clears `candidate`, `add_data`, and `block` before returning; preserve the returned status and module-level ERROR transition.
+The cleanup refactor was followed by strict compilation, context/provider fault tests, fork isolation, health tests, production vector regression, ASan/UBSan, Memcheck, cppcheck, and diff hygiene checks. All passed.
 
 ### Finding F-02: Inner Instantiate/Reseed Error Cleanup Requires a Unified Exit Review
 
 The current instantiate and reseed functions clear their local `input` and `seed` buffers after the DF/update sequence. Their input validation returns before secret material is copied, and the DF failure path reaches the cleanup statements. This behavior is currently correct, but it should remain covered by a fault-injection test that forces DF failure after temporary data has been populated.
 
-**Severity:** Medium verification gap. **Status:** Open as test coverage. **Required action:** Add a test-only DF fault seam or equivalent controlled failure point and assert both buffer cleanup and module `ERROR` transition.
+**Severity:** Medium verification gap. **Status:** Open as test coverage. **Required action:** Add a test-only DF fault seam or equivalent controlled failure point and assert both buffer cleanup and module `ERROR` transition. This remains independent of F-01 and is not required to change the already-correct cleanup behavior.
 
 ### Finding F-03: Assembly Candidate Has No Self-Contained Validation
 
@@ -67,7 +65,7 @@ The inline candidate changes only the BCC implementation inside Block_Cipher_df.
 
 ## Activation Recommendation
 
-Do not activate inline DF in the production dispatcher yet. The candidate's cryptographic and leaf-level behavior is strong, but full-module activation is blocked by F-01 and F-04. The first required code change is a structured cleanup path in inner generate. The second is a test-only full-module dispatcher variant that reaches inline DF while retaining the current production dispatcher unchanged. After those actions, rerun the complete fault, lifecycle, zeroization, vector, sanitizer, Memcheck, and production-image isolation gates.
+Do not activate inline DF in the production dispatcher yet. The candidate's cryptographic and leaf-level behavior is strong, but full-module activation remains gated by F-02 test coverage and F-04 full-module inline integration evidence. F-01, the structured cleanup path in inner generate, is complete and verified. The remaining activation work is a test-only full-module dispatcher variant that reaches inline DF while retaining the current production dispatcher unchanged. After those actions, rerun the complete fault, lifecycle, zeroization, vector, sanitizer, Memcheck, and production-image isolation gates.
 
 ## References
 

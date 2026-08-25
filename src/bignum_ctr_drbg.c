@@ -456,20 +456,34 @@ bignum_ctr_drbg_status_t bignum_ctr_drbg_generate(
     bignum_ctr_drbg_ctx *ctx, uint8_t *out, size_t out_len,
     const uint8_t *additional_input, size_t additional_input_len)
 {
-    bignum_ctr_drbg_ctx candidate;
+    bignum_ctr_drbg_ctx candidate = {0};
     uint8_t add_data[48] = {0};
-    uint8_t block[16];
+    uint8_t block[16] = {0};
     bignum_ctr_drbg_status_t status = BIGNUM_CTR_DRBG_SUCCESS;
     size_t offset;
-    if (ctx == NULL || (out == NULL && out_len != 0U)) return BIGNUM_CTR_DRBG_ERROR_NULL_ARG;
-    if (ctx->initialized == 0U) return BIGNUM_CTR_DRBG_ERROR_STATE;
+    if (ctx == NULL || (out == NULL && out_len != 0U)) {
+        status = BIGNUM_CTR_DRBG_ERROR_NULL_ARG;
+        goto cleanup;
+    }
+    if (ctx->initialized == 0U) {
+        status = BIGNUM_CTR_DRBG_ERROR_STATE;
+        goto cleanup;
+    }
     if (out_len > BIGNUM_CTR_DRBG_MAX_REQUEST_BYTES || additional_input_len > BIGNUM_CTR_DRBG_MAX_INPUT_BYTES ||
-        (additional_input_len != 0U && additional_input == NULL)) return BIGNUM_CTR_DRBG_ERROR_INPUT;
-    if (ctx->reseed_counter > DRBG_RESEED_INTERVAL) return BIGNUM_CTR_DRBG_ERROR_RESEED_REQUIRED;
+        (additional_input_len != 0U && additional_input == NULL)) {
+        status = BIGNUM_CTR_DRBG_ERROR_INPUT;
+        goto cleanup;
+    }
+    if (ctx->reseed_counter > DRBG_RESEED_INTERVAL) {
+        status = BIGNUM_CTR_DRBG_ERROR_RESEED_REQUIRED;
+        goto cleanup;
+    }
     candidate = *ctx;
-    if (additional_input_len != 0U) status = bignum_ctr_drbg_block_cipher_df_dispatch(additional_input, additional_input_len, add_data);
-    if (status != BIGNUM_CTR_DRBG_SUCCESS) return status;
-    if (additional_input_len != 0U) bignum_ctr_drbg_update_dispatch(add_data, candidate.key, candidate.v);
+    if (additional_input_len != 0U) {
+        status = bignum_ctr_drbg_block_cipher_df_dispatch(additional_input, additional_input_len, add_data);
+        if (status != BIGNUM_CTR_DRBG_SUCCESS) goto cleanup;
+        bignum_ctr_drbg_update_dispatch(add_data, candidate.key, candidate.v);
+    }
     for (offset = 0U; offset < out_len; offset += sizeof(block)) {
         size_t take = out_len - offset;
         if (take > sizeof(block)) take = sizeof(block);
@@ -480,10 +494,12 @@ bignum_ctr_drbg_status_t bignum_ctr_drbg_generate(
     bignum_ctr_drbg_update_dispatch(add_data, candidate.key, candidate.v);
     ++candidate.reseed_counter;
     *ctx = candidate;
+
+cleanup:
     secure_zero(&candidate, sizeof(candidate));
     secure_zero(add_data, sizeof(add_data));
     secure_zero(block, sizeof(block));
-    return BIGNUM_CTR_DRBG_SUCCESS;
+    return status;
 }
 
 void bignum_ctr_drbg_uninstantiate(bignum_ctr_drbg_ctx *ctx)
