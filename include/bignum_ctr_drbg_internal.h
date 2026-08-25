@@ -52,6 +52,26 @@ void bignum_ctr_drbg_bcc_asm(
     const uint8_t *data, size_t data_len,
     uint8_t output[BIGNUM_CTR_DRBG_BLOCK_BYTES]);
 
+/**
+ * @brief Computes one BCC chaining block from a pre-expanded AES-256 key.
+ * @details This private leaf is used by Block_Cipher_df to amortize one
+ * expanded schedule across its three BCC calls. The schedule is borrowed and
+ * is never modified; the leaf owns and clears only its local chaining/input
+ * workspace before return.
+ * @param expanded_key [in] Caller-owned 240-byte AES-256 schedule.
+ * @param data [in] Caller-owned block-aligned data; length is positive.
+ * @param data_len [in] Number of data bytes, a positive multiple of 16.
+ * @param output [out] Caller-owned 16-byte chaining result.
+ * @pre All ranges are valid and the CPU supports AES-NI.
+ * @post Exactly one 16-byte BCC result is written; no schedule ownership is transferred.
+ * @warning This internal leaf performs no pointer or length validation.
+ * @thread_safety Thread-safe for independent buffers.
+ */
+void bignum_ctr_drbg_bcc_expanded_asm(
+    const uint8_t expanded_key[BIGNUM_CTR_DRBG_EXPANDED_KEY_BYTES],
+    const uint8_t *data, size_t data_len,
+    uint8_t output[BIGNUM_CTR_DRBG_BLOCK_BYTES]);
+
 /** @brief Runs BCC through the complete backend or C fallback. */
 void bignum_ctr_drbg_bcc_dispatch(
     const uint8_t key[BIGNUM_CTR_DRBG_KEY_BYTES],

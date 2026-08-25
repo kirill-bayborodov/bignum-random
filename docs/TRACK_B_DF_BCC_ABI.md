@@ -7,9 +7,10 @@ The DF/BCC assembly path is internal to the CTR_DRBG implementation. It is not i
 | Primitive | System V AMD64 arguments | Contract |
 |---|---|---|
 | `bignum_ctr_drbg_bcc_asm` | `RDI=key[32]`, `RSI=data`, `RDX=data_len`, `RCX=output[16]` | `data_len` is positive and a multiple of 16; output is one BCC chaining block |
+| `bignum_ctr_drbg_bcc_expanded_asm` | `RDI=expanded_key[240]`, `RSI=data`, `RDX=data_len`, `RCX=output[16]` | Borrowed expanded schedule; positive block-aligned data; private 80-byte chaining/input workspace |
 | `bignum_ctr_drbg_block_cipher_df_asm` | `RDI=input`, `RSI=input_len`, `RDX=output[48]` | Input length is validated by the C dispatcher; output is exactly 48 bytes |
 
-The YASM BCC leaf expands the 256-bit key once, processes every 16-byte block, publishes one 16-byte result, clears its expanded key/chaining/block storage, and does not retain global state. The C dispatcher must validate pointers and lengths before calling it. The YASM DF leaf may call only the internal YASM AES/BCC leaves and must clear all private temporary state before return.
+The ordinary YASM BCC leaf expands the 256-bit key once, processes every 16-byte block, publishes one 16-byte result, clears its expanded key/chaining/block storage, and does not retain global state. The expanded-key leaf borrows a caller-owned 240-byte schedule, performs the same chaining algorithm, and clears its private 80-byte workspace. DF expands its initial key once for all three BCC calls, then expands the post-processed key once for the final AES blocks. The C dispatcher must validate pointers and lengths before calling it. The YASM DF leaf may call only the internal YASM AES/BCC leaves and must clear all private temporary state before return.
 
 The BCC and DF dispatchers select YASM only when all required symbols and AES-NI are present. Any missing symbol or unsupported CPU selects the C reference fallback. Test-only deterministic providers and fault hooks remain outside this boundary.
 

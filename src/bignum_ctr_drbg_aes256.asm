@@ -18,6 +18,7 @@ GLOBAL bignum_ctr_drbg_aes256_expand_key_asm
 GLOBAL bignum_ctr_drbg_aes256_encrypt_expanded_asm
 GLOBAL bignum_ctr_drbg_update_asm
 GLOBAL bignum_ctr_drbg_bcc_asm
+GLOBAL bignum_ctr_drbg_bcc_expanded_asm
 GLOBAL bignum_ctr_drbg_block_cipher_df_asm
 %ifdef BIGNUM_DRBG_ZEROIZE_PROBE
 EXTERN bignum_ctr_drbg_zeroization_probe
@@ -235,6 +236,62 @@ bignum_ctr_drbg_bcc_asm:
     pop         rbp
     ret
 
+; void bignum_ctr_drbg_bcc_expanded_asm(const uint8_t expanded_key[240],
+;     const uint8_t *data, size_t data_len, uint8_t output[16]);
+; The expanded schedule is borrowed; only the 80-byte local workspace is wiped.
+bignum_ctr_drbg_bcc_expanded_asm:
+    push        rbp
+    mov         rbp, rsp
+    push        r12
+    push        r13
+    push        r14
+    push        r15
+    sub         rsp, 80
+    mov         r15, rdi
+    mov         r12, rsi
+    mov         r13, rdx
+    mov         r14, rcx
+
+    pxor        xmm0, xmm0
+    movdqu      [rsp], xmm0
+.expanded_bcc_block:
+    test        r13, r13
+    jz          .expanded_bcc_done
+    movdqu      xmm0, [r12]
+    pxor        xmm0, [rsp]
+    movdqu      [rsp + 16], xmm0
+    mov         rdi, r15
+    lea         rsi, [rsp + 16]
+    mov         rdx, rsp
+    call        bignum_ctr_drbg_aes256_encrypt_expanded_asm
+    add         r12, 16
+    sub         r13, 16
+    jmp         .expanded_bcc_block
+.expanded_bcc_done:
+    movdqu      xmm0, [rsp]
+    movdqu      [r14], xmm0
+    pxor        xmm0, xmm0
+    pxor        xmm1, xmm1
+    pxor        xmm2, xmm2
+    pxor        xmm3, xmm3
+    xor         eax, eax
+    lea         rdi, [rsp]
+    mov         ecx, 10
+    rep stosq
+%ifdef BIGNUM_DRBG_SECRET_ZEROIZE_PROBE
+    lea         rdi, [rsp]
+    mov         rsi, 80
+    mov         edx, 3
+    call        bignum_ctr_drbg_secret_zeroization_probe
+%endif
+    add         rsp, 80
+    pop         r15
+    pop         r14
+    pop         r13
+    pop         r12
+    pop         rbp
+    ret
+
 ; bignum_ctr_drbg_block_cipher_df_asm(const uint8_t *input, size_t input_len,
 ;     uint8_t output[48]);
 ; The C dispatcher validates 0 <= input_len <= 1024 and pointer ownership.
@@ -288,8 +345,13 @@ bignum_ctr_drbg_block_cipher_df_asm:
     cmp         ebx, 32
     jb          .df_init_key
 
+    lea         rdi, [rsp + 2144]
+    lea         rsi, [rsp + 2192]
+    call        bignum_ctr_drbg_aes256_expand_key_asm
+
     xor         ebx, ebx
 .df_bcc_loop:
+
     lea         rdi, [rsp + 1040]
     pxor        xmm0, xmm0
     movdqu      [rdi], xmm0
@@ -300,7 +362,7 @@ bignum_ctr_drbg_block_cipher_df_asm:
     lea         rdi, [rsp + 1056]
     mov         rcx, r15
     rep movsb
-    lea         rdi, [rsp + 2144]
+    lea         rdi, [rsp + 2192]
     lea         rsi, [rsp + 1040]
     mov         rdx, r15
     add         rdx, 16
@@ -308,7 +370,7 @@ bignum_ctr_drbg_block_cipher_df_asm:
     mov         rax, rbx
     shl         rax, 4
     add         rcx, rax
-    call        bignum_ctr_drbg_bcc_asm
+    call        bignum_ctr_drbg_bcc_expanded_asm
 %ifdef BIGNUM_DRBG_DF_SNAPSHOT
     mov         edi, ebx
     lea         rsi, [rsp + 2096]

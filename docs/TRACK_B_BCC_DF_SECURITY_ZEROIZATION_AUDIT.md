@@ -11,6 +11,7 @@ The audit covers the modified YASM BCC and Block_Cipher_df leaves, their C dispa
 | Component | Workspace | Secret material | Cleanup evidence | Result |
 |---|---:|---|---|---|
 | BCC | 320 bytes | Expanded AES-256 schedule, chaining value, current block | 40 `stosq` operations before return | PASS |
+| Expanded-key BCC | 80 bytes | Chaining value and current block; caller schedule is borrowed | 10 `stosq` operations before return | PASS |
 | DF | 2440 bytes | S/data stream, three BCC outputs, raw post-processed key, X, expanded AES schedule | 305 `stosq` operations before return | PASS |
 | DF post-processing | DF workspace offsets 2096, 2144, 2176, 2192 | Temp, raw key, X, expanded schedule | Included in DF wipe range `[rsp, rsp+2440)` | PASS |
 | Production object | No snapshot/zeroization probe symbols | No test-only callback dependency | `nm -u` contains no test-hook symbols | PASS |
@@ -28,6 +29,7 @@ The production assembly object contains the expected AES, Update, BCC, and DF sy
 | Gate | Evidence | Result |
 |---|---|---|
 | BCC zeroization probe | 320-byte workspace fully zero after direct BCC return | PASS |
+| Expanded-key BCC zeroization probe | 80-byte workspace fully zero after each of three DF-internal calls | PASS |
 | DF zeroization probe | 2440-byte workspace fully zero after DF return; direct BCC plus three DF BCC calls observed | PASS |
 | AES-256 leaf KAT | C/YASM leaf comparison | PASS |
 | AddressSanitizer/UBSan | Strict test binary | PASS |
@@ -43,7 +45,7 @@ The YASM leaves themselves are internal primitives with validated caller contrac
 
 ## Findings
 
-The audit identified and corrected one static-analysis issue: a redundant `output != NULL` condition after an explicit NULL return in the dispatcher. It also identified that the previous zeroization probe covered only CTR_DRBG_Update; conditional BCC and DF probes were added for test builds. No production test hook was introduced.
+The audit identified and corrected one static-analysis issue: a redundant `output != NULL` condition after an explicit NULL return in the dispatcher. It also identified that the previous zeroization probe covered only CTR_DRBG_Update; conditional BCC, expanded-key BCC, and DF probes were added for test builds. During expanded-key verification, a missing `xor eax,eax` before the new `rep stosq` was found and corrected. No production test hook was introduced.
 
 No unresolved memory-safety, secret-lifetime, stack-alignment, executable-stack, or production-isolation finding remains in the audited path. Residual review requirements are normal for future assembly optimization: every change must rerun the same direct zeroization probes, differential vectors, sanitizer/Memcheck gates, and symbol-isolation check.
 

@@ -43,3 +43,24 @@ The optimization must preserve the existing fail-closed dispatcher, AES-NI featu
 [1]: https://csrc.nist.gov/pubs/sp/800/90/a/r1/final "NIST SP 800-90A Rev. 1"
 
 [2]: https://csrc.nist.gov/pubs/fips/197/final "FIPS 197 Advanced Encryption Standard"
+
+## Expanded-Key Optimization Checkpoint
+
+The first optimization introduces `bignum_ctr_drbg_bcc_expanded_asm`, a private ABI leaf that borrows one 240-byte AES-256 schedule. DF now expands the initial key once for all three BCC calls, while retaining the required second expansion after the BCC-derived key is formed for final AES post-processing. The direct expanded-key BCC output was byte-equivalent to the ordinary BCC leaf.
+
+The same C11/YASM DF benchmark harness was rerun after integration:
+
+| DF input | C11 ns/call | Optimized YASM ns/call | Speedup |
+|---:|---:|---:|---:|
+| 1 B | 1808.18 | 370.07 | 4.89x |
+| 16 B | 1798.87 | 437.55 | 4.11x |
+| 32 B | 1796.85 | 502.28 | 3.58x |
+| 64 B | 1979.68 | 622.90 | 3.18x |
+| 128 B | 2213.48 | 898.98 | 2.46x |
+| 256 B | 2776.85 | 1417.61 | 1.96x |
+| 512 B | 3627.96 | 2378.87 | 1.53x |
+| 1024 B | 5512.46 | 4282.68 | 1.29x |
+
+These values are one post-change run and should be interpreted with the earlier repeated median/MAD profile rather than as a release-quality statistical claim. The optimization targets fixed setup cost; therefore, its relative benefit is expected to be strongest for short inputs and smaller when the BCC AES block loop dominates.
+
+The optimization remains gated on a fresh full benchmark comparison and must not be combined with AES-loop inlining in the same attribution step.
