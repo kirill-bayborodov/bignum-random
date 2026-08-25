@@ -64,3 +64,17 @@ The same C11/YASM DF benchmark harness was rerun after integration:
 These values are one post-change run and should be interpreted with the earlier repeated median/MAD profile rather than as a release-quality statistical claim. The optimization targets fixed setup cost; therefore, its relative benefit is expected to be strongest for short inputs and smaller when the BCC AES block loop dominates.
 
 The optimization remains gated on a fresh full benchmark comparison and must not be combined with AES-loop inlining in the same attribution step.
+
+## Inline AES-NI Loop Candidate
+
+A second isolated candidate, `bignum_ctr_drbg_bcc_expanded_inline_asm`, embeds the AES-256 rounds in the BCC loop and is not selected by the production dispatcher. It was compared with the current expanded-key BCC leaf over every 16-byte message length from 16 through 1056 bytes; all outputs were equivalent. The candidate also passed the direct ASan/UBSan equivalence harness and the stage-4 80-byte zeroization probe.
+
+| BCC message | Expanded-key leaf ns/call | Inline candidate ns/call | Candidate speedup |
+|---:|---:|---:|---:|
+| 544 B | 688.35 | 620.57 | 1.11x |
+| 672 B | 836.78 | 754.30 | 1.11x |
+| 800 B | 998.17 | 899.81 | 1.11x |
+| 928 B | 1143.81 | 1037.94 | 1.10x |
+| 1056 B | 1307.38 | 1184.75 | 1.10x |
+
+These are single-run direct BCC timings and are hypothesis evidence, not a production performance claim. The candidate remains isolated until the complete DF path is wired through a test-only dispatcher variant and passes the 1–1024-byte differential suite, NIST vectors, fault/lifecycle tests, zeroization audit, and production symbol-isolation review.

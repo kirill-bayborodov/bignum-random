@@ -72,6 +72,27 @@ void bignum_ctr_drbg_bcc_expanded_asm(
     const uint8_t *data, size_t data_len,
     uint8_t output[BIGNUM_CTR_DRBG_BLOCK_BYTES]);
 
+/**
+ * @brief Computes BCC with an inlined AES-NI block loop.
+ * @details This isolated candidate has the same borrowed schedule and output
+ * contract as bignum_ctr_drbg_bcc_expanded_asm, but embeds the fifteen AES-256
+ * rounds in its block loop to remove per-block call/return overhead. It is not
+ * selected by the production dispatcher until differential and security gates
+ * approve it.
+ * @param expanded_key [in] Caller-owned 240-byte AES-256 schedule.
+ * @param data [in] Caller-owned positive block-aligned data.
+ * @param data_len [in] Positive multiple-of-16 byte count.
+ * @param output [out] Caller-owned 16-byte BCC result.
+ * @pre All ranges are valid and AES-NI is supported.
+ * @post One BCC chaining block is written; local workspace is zeroized.
+ * @warning This internal candidate performs no pointer or length validation.
+ * @thread_safety Thread-safe for independent buffers.
+ */
+void bignum_ctr_drbg_bcc_expanded_inline_asm(
+    const uint8_t expanded_key[BIGNUM_CTR_DRBG_EXPANDED_KEY_BYTES],
+    const uint8_t *data, size_t data_len,
+    uint8_t output[BIGNUM_CTR_DRBG_BLOCK_BYTES]);
+
 /** @brief Runs BCC through the complete backend or C fallback. */
 void bignum_ctr_drbg_bcc_dispatch(
     const uint8_t key[BIGNUM_CTR_DRBG_KEY_BYTES],

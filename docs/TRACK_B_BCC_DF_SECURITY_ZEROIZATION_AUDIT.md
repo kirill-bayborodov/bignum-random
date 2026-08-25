@@ -56,3 +56,9 @@ No unresolved memory-safety, secret-lifetime, stack-alignment, executable-stack,
 [2]: https://csrc.nist.gov/pubs/fips/197/final "FIPS 197 Advanced Encryption Standard"
 
 [3]: https://csrc.nist.gov/pubs/fips/140-3/final "FIPS 140-3 Security Requirements for Cryptographic Modules"
+
+## Inline-Loop Candidate Review
+
+The isolated `bignum_ctr_drbg_bcc_expanded_inline_asm` candidate uses the same 80-byte local workspace and borrowed 240-byte schedule contract as the expanded-key leaf. Its AES-256 loop has 13 `aesenc` rounds followed by one `aesenclast` round with the final schedule key. Direct equivalence passed for every 16-byte message length from 16 through 1056 bytes. The stage-4 zeroization probe passed after the candidate returned, and the direct equivalence harness passed ASan/UBSan.
+
+The candidate is intentionally absent from `src/bignum_ctr_drbg.c` dispatcher selection. Production DF vectors remained 240/240 for both PR modes, and the ordinary production object contains no snapshot or zeroization probe symbols. This candidate is therefore an optimization evidence artifact, not yet a production-path change.
