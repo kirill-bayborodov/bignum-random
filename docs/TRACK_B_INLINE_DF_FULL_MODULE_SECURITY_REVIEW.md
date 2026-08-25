@@ -33,7 +33,7 @@ The cleanup refactor was followed by strict compilation, context/provider fault 
 
 The current instantiate and reseed functions clear their local `input` and `seed` buffers after the DF/update sequence. Their input validation returns before secret material is copied, and the DF failure path reaches the cleanup statements. This behavior is currently correct, but it should remain covered by a fault-injection test that forces DF failure after temporary data has been populated.
 
-**Severity:** Medium verification gap. **Status:** Open as test coverage. **Required action:** Add a test-only DF fault seam or equivalent controlled failure point and assert both buffer cleanup and module `ERROR` transition. This remains independent of F-01 and is not required to change the already-correct cleanup behavior.
+**Severity:** Medium verification gap. **Status:** Closed for the test-only controlled-failure harness. A temporary dispatcher failure after temporary input setup returned `ERROR_STATE`, preserved output and context, and recorded all three unified cleanup calls. This seam is not part of production sources. The remaining production requirement is to retain equivalent coverage after any actual dispatcher switch.
 
 ### Finding F-03: Assembly Candidate Has No Self-Contained Validation
 
@@ -45,7 +45,7 @@ The inline candidate intentionally has no pointer or length validation. This is 
 
 The inline candidate changes only the BCC implementation inside Block_Cipher_df. It must not alter module state transitions, reseed-counter handling, provider invocation count, output-preservation behavior, or fork ownership checks. Existing full-module tests passed with the current production dispatcher, but they do not yet exercise an inline-backed DF through the complete context/service path.
 
-**Severity:** Medium activation gate. **Status:** Open as integration evidence. **Required action:** Build a test-only full-module dispatcher variant and rerun context fault, health, fork, service, and zeroization tests with inline DF selected.
+**Severity:** Medium activation gate. **Status:** Closed for the test-only variant. The full-module inline DF dispatcher variant passed context/provider fault, health, fork, service, concurrency, and vector tests. The actual production switch remains separately gated by release-image audit, fallback validation, target-host benchmark, and explicit activation approval.
 
 ## Executed Evidence
 
@@ -65,7 +65,7 @@ The inline candidate changes only the BCC implementation inside Block_Cipher_df.
 
 ## Activation Recommendation
 
-Do not activate inline DF in the production dispatcher yet. The candidate's cryptographic and leaf-level behavior is strong, but full-module activation remains gated by F-02 test coverage and F-04 full-module inline integration evidence. F-01, the structured cleanup path in inner generate, is complete and verified. The remaining activation work is a test-only full-module dispatcher variant that reaches inline DF while retaining the current production dispatcher unchanged. After those actions, rerun the complete fault, lifecycle, zeroization, vector, sanitizer, Memcheck, and production-image isolation gates.
+Do not activate inline DF in the production dispatcher yet. The candidate's cryptographic and leaf-level behavior is strong, but full-module activation is now gated by release and change-control requirements rather than unresolved F-01/F-02/F-04 defects. F-01 is complete; F-02 and F-04 are closed for test-only evidence. The remaining activation work is the production release-image audit, non-AES-NI fallback validation, target-host benchmark, documentation/change-control update, and explicit activation approval. After those actions, rerun the complete fault, lifecycle, zeroization, vector, sanitizer, Memcheck, and production-image isolation gates on the actual production dispatcher.
 
 ## References
 
