@@ -9,8 +9,19 @@
  */
 #include "bignum_ctr_drbg.h"
 
-#include <limits.h>
 #include <string.h>
+#include <sys/random.h>
+
+#if defined(__GNUC__) || defined(__clang__)
+#define BIGNUM_WEAK __attribute__((weak))
+#else
+#define BIGNUM_WEAK
+#endif
+
+extern void bignum_ctr_drbg_aes256_encrypt_expanded_asm(
+    const uint8_t expanded_key[BIGNUM_CTR_DRBG_EXPANDED_KEY_BYTES],
+    const uint8_t input[BIGNUM_CTR_DRBG_BLOCK_BYTES],
+    uint8_t output[BIGNUM_CTR_DRBG_BLOCK_BYTES]) BIGNUM_WEAK;
 
 #define AES_ROUNDS 14U
 #define AES_EXPANDED_KEY_BYTES 240U
@@ -163,7 +174,7 @@ static void aes_encrypt_block(const uint8_t key[32], const uint8_t input[16], ui
 {
     uint8_t expanded[AES_EXPANDED_KEY_BYTES];
     bignum_ctr_drbg_aes256_expand_key(key, expanded);
-    bignum_ctr_drbg_aes256_encrypt_expanded(expanded, input, output);
+    bignum_ctr_drbg_aes256_encrypt_dispatch(expanded, input, output);
     secure_zero(expanded, sizeof(expanded));
 }
 
@@ -171,6 +182,40 @@ static void secure_zero(void *memory, size_t length)
 {
     volatile uint8_t *p = (volatile uint8_t *)memory;
     while (length-- != 0U) *p++ = 0U;
+}
+
+int bignum_ctr_drbg_aes256_runtime_has_aesni(void)
+{
+#if defined(__GNUC__) || defined(__clang__)
+    __builtin_cpu_init();
+    return __builtin_cpu_supports("aes") != 0;
+#else
+    return 0;
+#endif
+}
+
+int bignum_ctr_drbg_aes256_backend(void)
+{
+#if defined(__GNUC__) || defined(__clang__)
+    return bignum_ctr_drbg_aes256_runtime_has_aesni() &&
+           bignum_ctr_drbg_aes256_encrypt_expanded_asm != 0 ? 1 : 0;
+#else
+    return 0;
+#endif
+}
+
+void bignum_ctr_drbg_aes256_encrypt_dispatch(
+    const uint8_t expanded_key[BIGNUM_CTR_DRBG_EXPANDED_KEY_BYTES],
+    const uint8_t input[BIGNUM_CTR_DRBG_BLOCK_BYTES],
+    uint8_t output[BIGNUM_CTR_DRBG_BLOCK_BYTES])
+{
+#if defined(__GNUC__) || defined(__clang__)
+    if (bignum_ctr_drbg_aes256_backend() != 0) {
+        bignum_ctr_drbg_aes256_encrypt_expanded_asm(expanded_key, input, output);
+        return;
+    }
+#endif
+    bignum_ctr_drbg_aes256_encrypt_expanded(expanded_key, input, output);
 }
 
 static void increment_v(uint8_t v[16])

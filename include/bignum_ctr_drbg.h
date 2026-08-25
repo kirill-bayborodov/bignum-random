@@ -70,6 +70,18 @@ void bignum_ctr_drbg_aes256_encrypt_expanded(
     const uint8_t input[BIGNUM_CTR_DRBG_BLOCK_BYTES],
     uint8_t output[BIGNUM_CTR_DRBG_BLOCK_BYTES]);
 
+/** Returns nonzero when the runtime CPU advertises AES-NI. */
+int bignum_ctr_drbg_aes256_runtime_has_aesni(void);
+
+/** Returns the selected backend: 0 for C11 fallback, 1 for AES-NI YASM. */
+int bignum_ctr_drbg_aes256_backend(void);
+
+/** Encrypts one block through the safe runtime-selected backend. */
+void bignum_ctr_drbg_aes256_encrypt_dispatch(
+    const uint8_t expanded_key[BIGNUM_CTR_DRBG_EXPANDED_KEY_BYTES],
+    const uint8_t input[BIGNUM_CTR_DRBG_BLOCK_BYTES],
+    uint8_t output[BIGNUM_CTR_DRBG_BLOCK_BYTES]);
+
 #ifdef __cplusplus
 }
 #endif

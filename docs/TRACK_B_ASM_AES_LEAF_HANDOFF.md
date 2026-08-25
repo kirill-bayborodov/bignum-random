@@ -26,13 +26,17 @@ The current assembly symbol deliberately has an `_asm` suffix. This prevents acc
 | C/YASM output equality | **PASS** |
 | GNU stack metadata | `.note.GNU-stack` present and non-executable |
 | CPU prerequisite on test host | AES-NI flag present |
-| Microbenchmark | 100,000 blocks; C11 3,043,505,370 ns; YASM 473,056 ns; observed ratio 6433.711x |
+| Runtime dispatcher, C-only link | Backend 0 / C11 fallback; FIPS 197 KAT **PASS** |
+| Runtime dispatcher, YASM link | Backend 1 / AES-NI; FIPS 197 KAT **PASS** |
+| Full DRBG vector suite, C-only link | **PASS: 240/240 records** |
+| Full DRBG vector suite, YASM link | **PASS: 240/240 records** |
+| Microbenchmark | 100,000 blocks; C11 3,052,326,877 ns; YASM 431,531 ns; observed ratio 7073.251x |
 
 The microbenchmark is a leaf-level engineering comparison. It is not a DRBG service benchmark and it should not be used as certification evidence. The unusually large ratio is expected from this deliberately readable C11 reference, whose S-box is computed by finite-field exponentiation for clarity, versus hardware AES-NI instructions. A later comparison must measure the complete DRBG path, including key expansion strategy, counter handling, DF/BCC, state update, and dispatch overhead.
 
 ## Controls required before integration
 
-The leaf must not be called merely because the host is x86-64. The final module requires a validated runtime feature-selection policy, a defined behavior on processors without AES-NI, an identical C/YASM test vector suite, ABI and object-link evidence for both protected build modes, and an assembly-side review of sensitive-state lifetime and zeroization. The expanded-key argument is currently public only to make the leaf boundary testable; the final Approved API should keep the AES schedule internal to the DRBG context and should not expose SSP-bearing buffers to consumers.
+The leaf must not be called merely because the host is x86-64. The candidate now has a C-only fallback and a weak-symbol/runtime AES-NI dispatcher. The final module still requires a validated runtime feature-selection policy, a defined behavior on processors without AES-NI, an identical C/YASM test vector suite, ABI and object-link evidence for both protected build modes, and an assembly-side review of sensitive-state lifetime and zeroization. The expanded-key argument is currently public only to make the leaf boundary testable; the final Approved API should keep the AES schedule internal to the DRBG context and should not expose SSP-bearing buffers to consumers.
 
 The protected Makefile and CI workflow remain unchanged. Standalone C harnesses are kept under `tools/` rather than `tests/`, because the protected Makefile automatically treats every `tests/*.c` file as a production test target. Consequently, this leaf is currently a handoff artifact and is not part of the family-named production object selected by the existing build rules.
 
