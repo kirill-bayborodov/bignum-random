@@ -4,6 +4,10 @@
 
 **Status:** Planning artifact; not a validation claim.
 
+## Official Scope Notes
+
+The CMVP entropy-validation guidance states that FIPS 140-2 and FIPS 140-3 module submissions must include documentation justifying conformance to SP 800-90B when applicable, and identifies SP 800-90C RBG validation as a separate submission path [6]. NIST describes CAVP algorithm validation as a prerequisite to cryptographic module validation and states that algorithm validation alone does not satisfy module-validation requirements [7]. The current ACVP DRBG specification covers injected entropy/other inputs and instantiate, generate, and reseed algorithm behavior, while excluding the entropy source, health testing, uninstantiate, automatic reseed and error-condition validation [8]. The project plan therefore keeps entropy-source, lifecycle, health, integrity and module-boundary evidence separate from DRBG algorithm vectors.
+
 ## Workstream A: Entropy-Source Treatment
 
 | Step | Verification activity | Required evidence | Decision owner |
@@ -62,3 +66,9 @@ First obtain a CSTL decision on entropy-source treatment and exact CTR_DRBG capa
 [4]: https://csrc.nist.gov/pubs/fips/140-3/final "NIST FIPS 140-3"
 
 [5]: https://csrc.nist.gov/projects/cryptographic-algorithm-validation-program "NIST CAVP"
+
+[6]: https://csrc.nist.gov/projects/cryptographic-module-validation-program/entropy-validations "NIST CMVP Entropy Validations"
+
+[7]: https://csrc.nist.gov/projects/cryptographic-algorithm-validation-program "NIST CAVP and module-validation relationship"
+
+[8]: https://pages.nist.gov/ACVP/draft-vassilev-acvp-drbg.html "NIST ACVP DRBG JSON specification"
