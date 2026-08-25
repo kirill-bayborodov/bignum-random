@@ -88,3 +88,7 @@ No Approved service may fall back to raw Linux `getrandom(2)` if the DRBG is una
 [3]: https://man7.org/linux/man-pages/man2/getrandom.2.html "Linux getrandom(2)"
 
 [4]: https://csrc.nist.gov/projects/cryptographic-module-validation-program/fips-140-3-standards "NIST CMVP FIPS 140-3 Standards"
+
+## Production entropy-source adapter
+
+The candidate production adapter `bignum_ctr_drbg_os_entropy_provider` uses Linux `getrandom(2)` with flags zero, retries `EINTR`, accepts short reads until the requested buffer is complete, rejects zero-progress or fatal errors as `ERROR_ENTROPY_SOURCE`, and requires a NULL provider context. This adapter is a platform boundary, not an entropy-source validation claim. Deterministic providers remain test-only; the production OS adapter has no mutable provider state and cannot be selected through a test hook.

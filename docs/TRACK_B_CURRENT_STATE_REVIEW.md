@@ -47,3 +47,9 @@ The legacy production image remains non-Approved compatibility code and is not t
 [2]: https://csrc.nist.gov/pubs/sp/800/90/a/r1/final "NIST SP 800-90A Rev. 1"
 
 [3]: https://csrc.nist.gov/pubs/fips/140-3/final "NIST FIPS 140-3"
+
+## Production entropy adapter update
+
+A stateless Linux `getrandom(2)` adapter is now available as a separate candidate boundary. It requires a NULL provider context, retries `EINTR`, accepts short reads until completion, rejects zero progress and fatal syscall errors as `ERROR_ENTROPY_SOURCE`, and leaves continuous RCT/APT checks in the caller context. The adapter is not itself an entropy-source assessment and is not yet wired into the protected legacy production image. Its integration test passed in strict and ASan/UBSan builds.
+
+The production image audit remains a legacy-image isolation audit: the current archive still contains no candidate provider or health symbols. A future Approved image must repeat the audit after controlled integration and must supply exact-image, dependency, symbol-allowlist and entropy-source evidence.

@@ -31,7 +31,8 @@ typedef enum bignum_ctr_drbg_status {
     BIGNUM_CTR_DRBG_ERROR_INPUT = -2,
     BIGNUM_CTR_DRBG_ERROR_STATE = -3,
     BIGNUM_CTR_DRBG_ERROR_RESEED_REQUIRED = -4,
-    BIGNUM_CTR_DRBG_ERROR_ENTROPY_HEALTH = -5
+    BIGNUM_CTR_DRBG_ERROR_ENTROPY_HEALTH = -5,
+    BIGNUM_CTR_DRBG_ERROR_ENTROPY_SOURCE = -6
 } bignum_ctr_drbg_status_t;
 
 typedef struct bignum_ctr_drbg_ctx {
