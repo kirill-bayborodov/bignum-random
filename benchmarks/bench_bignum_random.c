@@ -9,7 +9,7 @@
  */
 #include "bignum_random_benchmark_adapter.h"
 
-#include <benchmark_core.h>
+#include <benchmark_framework.h>
 
 /**
  * @brief Runs the single-thread bounded-random benchmark command.

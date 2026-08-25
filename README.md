@@ -27,7 +27,7 @@ The required `bignum-core` component is a Git submodule at `libs/bignum-core`. `
 | Component | Expected location | Purpose |
 |---|---|---|
 | `bignum-core` | `libs/bignum-core` | Defines little-endian fixed-capacity `bignum_t` and `BIGNUM_CAPACITY`. |
-| `benchmark-framework` | `libs/benchmark-framework/dist` | Supplies `benchmark_core.h`, the static library, `bench_matrix`, and `benchmark_stats`. |
+| `benchmark-framework` | `libs/benchmark-framework/dist` | Supplies `benchmark_framework.h`, the static library, `bench_matrix`, and `benchmark_stats`. |
 | `make` | System `PATH` | Drives the existing build, test, distribution, and benchmark targets. |
 | `gcc` | System `PATH` | Compiles and links the C11 reference, tests, runners, and distributions. |
 | `yasm` | System `PATH` | Assembles the Linux x86-64 production object. |
