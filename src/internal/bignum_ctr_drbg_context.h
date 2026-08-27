@@ -59,7 +59,7 @@ extern "C" {
  * @details The callback is synchronous. It receives a caller-owned output
  * buffer and must fill all `out_len` bytes or return a non-success status.
  * The provider context is borrowed and is never freed by this library.
- * @param provider_context [in] Provider-owned state; may be NULL only when
+ * @param[in] provider_context Provider-owned state; may be NULL only when
  * the provider contract explicitly permits it.
  * @param out [out] Caller-allocated entropy buffer owned by the library for
  * the duration of the callback; valid for exactly `out_len` bytes.
@@ -118,12 +118,13 @@ bignum_ctr_drbg_status_t bignum_ctr_drbg_context_startup(
 
 /**
  * @brief Instantiates the DRBG using entropy obtained from the provider.
- * @param context [in,out] READY context.
- * @param provider [in] Synchronous borrowed callback; non-NULL.
- * @param provider_context [in] Borrowed provider state; not retained after uninstantiate.
- * @param nonce [in] Exactly 16 nonce bytes, borrowed for the call.
- * @param personalization [in] Optional borrowed personalization bytes.
- * @param personalization_len [in] Length not exceeding the candidate limit.
+ * @param[in,out] context READY context.
+ * @param[in] provider Synchronous borrowed callback; non-NULL.
+ * @param[in] provider_context Borrowed provider state; not retained after uninstantiate.
+ * @param[in] nonce Exactly 16 nonce bytes, borrowed for the call.
+ * @param[in] nonce_len Must equal 16; the input is not retained.
+ * @param[in] personalization Optional borrowed personalization bytes.
+ * @param[in] personalization_len Length not exceeding the candidate limit.
  * @return `BIGNUM_CTR_DRBG_SUCCESS` after provider-filled entropy and instantiate; provider or DRBG failure latches ERROR.
  * @post The context retains only DRBG state, never the provider pointer.
  * @thread_safety Not safe concurrently on the same context.
@@ -138,7 +139,7 @@ bignum_ctr_drbg_status_t bignum_ctr_drbg_context_instantiate(
  * @brief Reseeds the context with one provider entropy input.
  * @param context [in,out] READY or RESEED_REQUIRED context.
  * @param provider [in] Synchronous borrowed callback; non-NULL.
- * @param provider_context [in] Borrowed provider state.
+ * @param[in] provider_context Borrowed provider state.
  * @return `BIGNUM_CTR_DRBG_SUCCESS` and READY, or a failure with ERROR.
  * @post Provider output and temporary buffers are zeroized before return.
  * @thread_safety Not safe concurrently on the same context.
@@ -149,9 +150,12 @@ bignum_ctr_drbg_status_t bignum_ctr_drbg_context_reseed(
 
 /**
  * @brief Generates bytes through the initialized DRBG.
- * @param context [in,out] READY context.
- * @param out [out] Caller-allocated output; unchanged on failure.
- * @param out_len [in] At most the candidate request limit.
+ * @param[in,out] context READY context.
+ * @param[out] out Caller-allocated output; unchanged on failure.
+ * @param[in] out_len At most the candidate request limit.
+ * @param[in] additional_input Optional borrowed additional input; may be NULL
+ * when `additional_input_len` is zero.
+ * @param[in] additional_input_len Length of additional input in bytes.
  * @return `BIGNUM_CTR_DRBG_SUCCESS`, `BIGNUM_CTR_DRBG_ERROR_RESEED_REQUIRED`, or a named failure status.
  * @post No provider is called and no raw getrandom fallback is reachable.
  * @thread_safety Not safe concurrently on the same context.

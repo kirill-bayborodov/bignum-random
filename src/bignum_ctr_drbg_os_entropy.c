@@ -11,9 +11,6 @@
 
 /**
  * @brief Reads a complete entropy buffer from the Linux urandom source.
- * @param provider_context [in] Must be NULL; no provider state is accepted.
- * @param out [out] Complete writable output range.
- * @param out_len [in] Requested byte count.
  * @return SUCCESS only after the complete range is filled.
  */
 bignum_ctr_drbg_status_t bignum_ctr_drbg_os_entropy_provider(
